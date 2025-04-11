@@ -1,0 +1,6 @@
+defaults:
+  - preprocessors: preprocessors
+  - models: models
+  - recorders: recorders
+  - stimulators: stimulators
+
