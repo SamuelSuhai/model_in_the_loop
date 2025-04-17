@@ -5,7 +5,13 @@
 
 
 # at what location what experimental information is stored in the file name
-'datatype_loc': 0
+# 'datatype_loc': 0
+# 'animal_loc': 1
+# 'region_loc': 2
+# 'field_loc': 3
+# 'stimulus_loc': 4
+# 'cond1_loc': 5
+
 'animal_loc': 1
 'region_loc': 2
 'field_loc': 3

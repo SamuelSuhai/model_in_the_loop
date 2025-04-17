@@ -1,8 +1,11 @@
-source_dir: ${hydra:runtime.cwd}/data/recordings/static_test_data
+# TODO make all file paths relative to repo root
+#source_dir: ${hydra:runtime.cwd}/data/recordings/static_test_data # use this for script 
+source_dir: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/static_test_data # modify this for notebook
 source_exp_dir: "1"
 source_smp_file: "M1_LR_GCL0_Chirp.smp"
 source_smh_file: "M1_LR_GCL0_Chirp.smh"
 source_stim_file: "SMP_M1_LR_GCL0_Chirp.h5"
 ini_file: "20190701__left.ini"
 # target_dir:  ${hydra:runtime.cwd}/data/recordings/updated_loop_data/20250412 # this will not work if you run it in a notebook. use line below
-target_dir: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/updated_loop_data/${now:%Y%m%d}
+target_dir: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/updated_loop_data/20250412
+new_file_name_base: "M1_LR_GCL0"
