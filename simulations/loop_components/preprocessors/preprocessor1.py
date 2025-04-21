@@ -223,7 +223,7 @@ class Preprocessor1:
         sleep(self.sleep_time_between_table_ops)
 
 
-    def process_data(self,connect_and_activate: bool = True) -> None:
+    def process_data(self,connect_and_activate: bool = True,return_traces: bool =False) -> None:
         """
         main function =
         Call this function to run the preprocessor on each iteration of the loop
@@ -243,4 +243,6 @@ class Preprocessor1:
         self.add_iteration_traces()
 
         self.iteration += 1
+
+        return (Traces() & dict(cond1=f'iter{self.iteration - 1}')).fetch() if return_traces else None
 ###############################################################################################################################################################
