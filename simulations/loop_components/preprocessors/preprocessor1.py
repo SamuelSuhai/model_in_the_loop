@@ -6,7 +6,8 @@ import warnings
 warnings.simplefilter("ignore", FutureWarning)
 from time import sleep 
 from typing import List, Dict, Any
-
+import numpy as np
+import h5py
 
 from djimaging.utils.dj_utils import activate_schema
 
@@ -34,9 +35,11 @@ class Preprocessor1:
                  path_to_djconfig_rel_to_home: str,
                  userinfo: dict,
                  sleep_time_between_table_ops: int  = 1,
+                 stimulus_type: str = 'noise', 
+                 stimulus_file_path: str = '',
                  ):
         """
-
+        
         """
 
 
@@ -69,6 +72,22 @@ class Preprocessor1:
         self.sleep_time_between_table_ops: int = sleep_time_between_table_ops
 
 
+        # set stimulus information
+        self.stimulus_type: str = stimulus_type
+        self.stimulus_file_path: str = stimulus_file_path
+
+
+        stim_name_func = lambda x: f'closedloop{x}'
+        alias_func = lambda x:  f"closedloop{x}_cl{x}_{x}closedloop"
+        with h5py.File(os.path.join(self.home_directory, self.stimulus_file_path), "r") as f:
+            noise_stimulus = f['stimulusarray'][:].T.astype(int)
+        self.stimulus_info_dict: Dict[str, Any] = dict(
+            stim_name_func=stim_name_func, 
+            alias_func=alias_func, pix_n_x=20, pix_n_y=15, 
+            pix_scale_x_um=30, pix_scale_y_um=30, 
+            stim_trace=noise_stimulus, 
+            skip_duplicates=True
+        )
 
     def load_config(self) -> None:
         """
@@ -125,9 +144,9 @@ class Preprocessor1:
         sleep(self.sleep_time_between_table_ops)
 
 
-
     def upload_iteration_data(self) -> None:
         
+
         # TODO: rescan vermeiden, scant alle 
         if self.iteration == 0:
             Experiment().rescan_filesystem(verboselvl=3)
@@ -137,10 +156,27 @@ class Preprocessor1:
         Field().rescan_filesystem(verboselvl=3)
         sleep(self.sleep_time_between_table_ops)
 
+        
+        
+        if self.stimulus_type.lower() == 'noise':
+            #TODO: make this better: 
+            Stimulus().add_noise(
+                                # TODO: not sure if the function is a good solution
+                                stim_name=self.stimulus_info_dict['stim_name_func'](self.iteration), 
+                                 alias=self.stimulus_info_dict['alias_func'](self.iteration), 
+                                 pix_n_x=self.stimulus_info_dict['pix_n_x'], 
+                                 pix_n_y=self.stimulus_info_dict['pix_n_y'], 
+                                 pix_scale_x_um=self.stimulus_info_dict['pix_scale_x_um'], 
+                                 pix_scale_y_um=self.stimulus_info_dict['pix_scale_y_um'], 
+                                 stim_trace=self.stimulus_info_dict['stim_trace'], 
+                                 skip_duplicates=self.stimulus_info_dict['skip_duplicates'],
+                                 )
+        elif self.stimulus_type.lower() == 'chirp':
+            # TODO: allow chirp for roi mask and classification
+            raise NotImplementedError (f'stimulus type {self.stimulus_type} not implemented')   
+        else:
+            raise NotImplementedError (f'stimulus type {self.stimulus_type} not implemented')
 
-        #TODO: this is dummy stimulus, need to add my own
-        Stimulus().add_stimulus(stim_name=f'closedloop{self.iteration}', alias=f"closedloop{self.iteration}_cl{self.iteration}_{self.iteration}closedloop", isrepeated=True, ntrigger_rep=2,
-                                trial_info=[1, 2], skip_duplicates=True)
         sleep(self.sleep_time_between_table_ops)
 
         Presentation().populate(processes=20, display_progress=True)
@@ -223,7 +259,7 @@ class Preprocessor1:
         sleep(self.sleep_time_between_table_ops)
 
 
-    def process_data(self,connect_and_activate: bool = True,return_traces: bool =False) -> None:
+    def process_data(self,connect_and_activate: bool = True,return_traces: bool =False):
         """
         main function =
         Call this function to run the preprocessor on each iteration of the loop

@@ -4,3 +4,6 @@ defaults:
   - recorders: recorders
   - stimulators: stimulators
 
+# stimulus informaiton 
+stimulus_type: noise
+stimulus_file_path: GitRepos/simulation_closed_loop/data/stimuli/original/noise.h5

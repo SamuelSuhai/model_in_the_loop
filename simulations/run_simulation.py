@@ -43,6 +43,10 @@ def create_loop_components(
                     path_to_djimaging_rel_to_home=preprocessors_cfg.path_to_djimaging_rel_to_home,
                     path_to_djconfig_rel_to_home=preprocessors_cfg.path_to_djconfig_rel_to_home,
                     userinfo=preprocessors_cfg.userinfo,
+                    
+                    # from overall configs 
+                    stimulus_type=cfg.stimulus_type,
+                    stimulus_file_path=cfg.stimulus_file_path,
                     )
   
     # create model
