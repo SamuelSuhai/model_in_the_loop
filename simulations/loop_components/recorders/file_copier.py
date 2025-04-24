@@ -16,7 +16,9 @@ class FileCopier:
                  ini_file: str,
                  target_dir: str,
                  new_file_name_base: str, # TODO make this from souce smp smh file just remove last parts
+                 stimulus_type: str,
                  sleep_time_between_file_ops: float = 0.1,
+                 debug: bool = False,
                  ) -> None:
         
         
@@ -34,9 +36,13 @@ class FileCopier:
         self.exp_num: str = str(1)
         assert os.path.exists(self.target_dir), f"Target directory {self.target_dir} does not exist."
         self.new_file_name_base: str = new_file_name_base
+
+        self.stimulus_type: str = stimulus_type
         
         self.iteration = 0
         self.sleep_time_between_file_ops = sleep_time_between_file_ops
+
+        self.debug = debug
 
     def create_experiment_dir_structure(self) -> None:
         """
@@ -69,10 +75,11 @@ class FileCopier:
         """
         copy files to the target directory structure of the experiment. It renames them such that
         the stimulus is at loc 4 and the loop iteration is at loc 5 of the filename.
-        TODO: what position in file name could be read from config
         """
-
-        new_file_full_name = f'{self.new_file_name_base}_cl{self.iteration}_iter{self.iteration}'
+        if self.stimulus_type == "closedloopdensenoise":
+            new_file_full_name = f'{self.new_file_name_base}_cldn{self.iteration}_iter{self.iteration}'
+        else:
+            raise NotImplementedError(f"Stimulus type {self.stimulus_type} not implemented.")
 
         # copy smp file into Raw
         source_path = os.path.join(self.source_dir, self.source_exp_dir, "Raw",self.source_smp_file)

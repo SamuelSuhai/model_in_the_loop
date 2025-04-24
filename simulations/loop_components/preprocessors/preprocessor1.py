@@ -8,13 +8,15 @@ from time import sleep
 from typing import List, Dict, Any
 import numpy as np
 import h5py
+import pickle
+import matplotlib.pyplot as plt
 
 from djimaging.utils.dj_utils import activate_schema
 
 # This imports `schema`. TODO: change this to general closde loop schema
 from djimaging.user.ssuhai.schemas.ssuhai_schema import UserInfo, \
     Experiment, Field, Stimulus, RoiMask, Roi, Traces, \
-    Presentation, RawDataParams, \
+    Presentation, RawDataParams, PreprocessParams, PreprocessTraces,\
     schema
 
 
@@ -34,16 +36,24 @@ class Preprocessor1:
                  path_to_djimaging_rel_to_home: str,
                  path_to_djconfig_rel_to_home: str,
                  userinfo: dict,
+                 
+                 dir_where_new_stim_appear: str,
+                 openretina_processed_data_path: str,
+                 stimulus_shape: List[int],
+
                  sleep_time_between_table_ops: int  = 1,
-                 stimulus_type: str = 'noise', 
-                 stimulus_file_path: str = '',
+                 stimulus_type: str = 'closedloopdensenoise',
+                 test_fraction: float = 0.2,
+                 debug: bool = False,
+                 plotting: dict = {},
+
                  ):
         """
         
-        """
+        
 
 
-        """ Should I put these in configs?
+        Should I put these in configs?
         """
         # check who is running command
         self.username: str = username
@@ -64,31 +74,39 @@ class Preprocessor1:
 
         # information for UserInfo table
         self.userinfo: dict = userinfo        
-
         self.schema_name = f"ageuler_{self.username}_test"
-
-        self.iteration: int = 0
-
         self.sleep_time_between_table_ops: int = sleep_time_between_table_ops
 
 
-        # set stimulus information
+        # set static stimulus information that does not change every loop iteration
         self.stimulus_type: str = stimulus_type
-        self.stimulus_file_path: str = stimulus_file_path
+        self.dir_where_new_stim_appear: str = dir_where_new_stim_appear
+        self.stimulus_shape: List[int] = stimulus_shape 
 
+        stim_name_func = lambda x: f'closedloopdensenoise{x}'
+        alias_func = lambda x:  f"closedloopdensenoise{x}_cldn{x}_{x}closedloopdensenoise"
 
-        stim_name_func = lambda x: f'closedloop{x}'
-        alias_func = lambda x:  f"closedloop{x}_cl{x}_{x}closedloop"
-        with h5py.File(os.path.join(self.home_directory, self.stimulus_file_path), "r") as f:
-            noise_stimulus = f['stimulusarray'][:].T.astype(int)
         self.stimulus_info_dict: Dict[str, Any] = dict(
             stim_name_func=stim_name_func, 
             alias_func=alias_func, pix_n_x=20, pix_n_y=15, 
             pix_scale_x_um=30, pix_scale_y_um=30, 
-            stim_trace=noise_stimulus, 
+            stim_trace=None, 
             skip_duplicates=True
         )
 
+        # set openretina processed data path
+        self.openretina_processed_data_path = os.path.join(home_directory,openretina_processed_data_path)
+        os.makedirs(self.openretina_processed_data_path, exist_ok=True)
+
+
+        self.iteration: int = 0
+
+        # open retina stuff
+        self.test_fraction: float = test_fraction
+
+        self.debug: bool = debug
+        self.plotting: dict = plotting
+        
     def load_config(self) -> None:
         """
         load config file
@@ -144,6 +162,33 @@ class Preprocessor1:
         sleep(self.sleep_time_between_table_ops)
 
 
+    def add_cldn_stimulus(self) -> None:
+
+        # add stim_trace to dict
+        current_stimulus_path = os.path.join(self.home_directory, self.dir_where_new_stim_appear,f"closedloopdensenoise{self.iteration}.h5")
+        with h5py.File(current_stimulus_path, "r") as f:
+            noise_stimulus = f['stimulusarray'][:].T.astype(int)
+
+        
+        # add to dict if it agrees wiith test fraction 
+        assert noise_stimulus.shape[0] * self.test_fraction % self.stimulus_shape[0] == 0 , f"Test stimulus shape {noise_stimulus.shape[0] * self.test_fraction} not divisible by {self.stimulus_shape[0]}"
+        assert noise_stimulus.shape[0] * (1 - self.test_fraction) % self.stimulus_shape[0] == 0 , f"Train stimulus shape {noise_stimulus.shape[0] * (1 - self.test_fraction)} not divisible by {self.stimulus_shape[0]}"
+        self.stimulus_info_dict['stim_trace'] = noise_stimulus
+
+        # add to database
+        Stimulus().add_noise(
+                            stim_name=self.stimulus_info_dict['stim_name_func'](self.iteration), 
+                                alias=self.stimulus_info_dict['alias_func'](self.iteration), 
+                                pix_n_x=self.stimulus_info_dict['pix_n_x'], 
+                                pix_n_y=self.stimulus_info_dict['pix_n_y'], 
+                                pix_scale_x_um=self.stimulus_info_dict['pix_scale_x_um'], 
+                                pix_scale_y_um=self.stimulus_info_dict['pix_scale_y_um'], 
+                                stim_trace=self.stimulus_info_dict['stim_trace'], 
+                                skip_duplicates=self.stimulus_info_dict['skip_duplicates'],
+                                )
+
+
+
     def upload_iteration_data(self) -> None:
         
 
@@ -158,22 +203,13 @@ class Preprocessor1:
 
         
         
-        if self.stimulus_type.lower() == 'noise':
-            #TODO: make this better: 
-            Stimulus().add_noise(
-                                # TODO: not sure if the function is a good solution
-                                stim_name=self.stimulus_info_dict['stim_name_func'](self.iteration), 
-                                 alias=self.stimulus_info_dict['alias_func'](self.iteration), 
-                                 pix_n_x=self.stimulus_info_dict['pix_n_x'], 
-                                 pix_n_y=self.stimulus_info_dict['pix_n_y'], 
-                                 pix_scale_x_um=self.stimulus_info_dict['pix_scale_x_um'], 
-                                 pix_scale_y_um=self.stimulus_info_dict['pix_scale_y_um'], 
-                                 stim_trace=self.stimulus_info_dict['stim_trace'], 
-                                 skip_duplicates=self.stimulus_info_dict['skip_duplicates'],
-                                 )
+        if self.stimulus_type.lower() == 'closedloopdensenoise':
+            self.add_cldn_stimulus()
+        
         elif self.stimulus_type.lower() == 'chirp':
             # TODO: allow chirp for roi mask and classification
             raise NotImplementedError (f'stimulus type {self.stimulus_type} not implemented')   
+        
         else:
             raise NotImplementedError (f'stimulus type {self.stimulus_type} not implemented')
 
@@ -217,6 +253,12 @@ class Preprocessor1:
         sleep(self.sleep_time_between_table_ops)
 
         RawDataParams().delete()
+        sleep(self.sleep_time_between_table_ops)
+
+        PreprocessParams().delete()
+        sleep(self.sleep_time_between_table_ops)
+        
+        PreprocessTraces().delete()
         
 
 
@@ -251,15 +293,93 @@ class Preprocessor1:
         Roi().populate(processes=20, display_progress=True)
         sleep(self.sleep_time_between_table_ops)
 
+        if self.debug:
+            RoiMask().plot1()
+            save_path = self.plotting.get("save_path_rel_home", "GitRepos/simulation_closed_loop/plotting")
+            plt.gcf().savefig(os.path.join(self.home_directory,save_path, f"roi_mask_{self.iteration}.pdf"))
 
-    def add_iteration_traces(self) -> None:
+
+
+    def add_iteration_traces_and_preprocess(self) -> None:
         
 
         Traces().populate(processes=20, display_progress=True)
         sleep(self.sleep_time_between_table_ops)
+        PreprocessParams().add_default(skip_duplicates=True)
+        sleep(self.sleep_time_between_table_ops)
+        PreprocessTraces().populate(processes=20, display_progress=True)
+        sleep(self.sleep_time_between_table_ops)
+
+    def save_iteration_data_for_openretina(self,trace_type: str = "smoothed_trace") -> None:
+        """
+        Retrieve informaiton for training an openretina model
+        """
+
+        assert trace_type in ["smoothed_trace", "pp_trace"]
 
 
-    def process_data(self,connect_and_activate: bool = True,return_traces: bool =False):
+        # 1) for neural response
+        iter_key = dict(cond1=f'iter{self.iteration}')
+
+        trace = (PreprocessTraces() & iter_key).fetch(trace_type)
+
+        # assume these values are the same for each field
+        trace_t0, trace_dt = (PreprocessTraces() & iter_key & dict(roi_id=1) ).fetch1("pp_trace_t0", "pp_trace_dt")
+
+        # reshape and tests
+        trace = np.concatenate(trace).reshape(trace.shape[0], -1)
+        trace_times = np.arange(trace[1].size) * trace_dt + trace_t0
+
+        # 2) for stimulus
+        triggertimes = (Presentation() & iter_key & dict(roi_id=1)).fetch1("triggertimes") 
+        stim_dt = np.mean(np.diff(triggertimes))
+        
+        # 3) make stimuli and response have same sampling frequency
+        nr_ca_samples_per_stimulus_trigger =  int(stim_dt / trace_dt)
+
+        response = []
+        for trigg_time in triggertimes:
+
+            closest_idx = np.argmin(np.abs(trace_times - trigg_time))
+            response.append(trace[:,closest_idx:closest_idx + nr_ca_samples_per_stimulus_trigger])
+        response = np.concatenate(response, axis=1)
+
+        # 4) create train and test split
+        shuffled_idx = np.random.permutation(len(triggertimes))
+        test_idx = shuffled_idx[:int(len(shuffled_idx) * self.test_fraction)]
+        train_idx = shuffled_idx[int(len(shuffled_idx) * self.test_fraction) : ]
+        
+        test_response = response[:,test_idx]
+        train_response = response[:,train_idx]
+        test_stimulus = self.stimulus_info_dict['stim_trace'][test_idx][np.newaxis, ...]
+        train_stimulus = self.stimulus_info_dict['stim_trace'][train_idx][np.newaxis, ...]
+
+        # tests for stimulus shape 
+        assert len(triggertimes) % self.stimulus_shape[0] == 0, f"triggertimes not divisible by stimulus shape {self.stimulus_shape[0]}"
+        assert test_response.shape[1] == test_stimulus.shape[1], f"test response and stimulus not same shape {test_response.shape} {test_stimulus.shape}"
+        assert train_response.shape[1] == train_stimulus.shape[1], f"train response and stimulus not same shape {train_response.shape} {train_stimulus.shape}"
+
+        assert len(test_stimulus.shape) == 4
+        assert len(train_stimulus.shape) == 4
+        
+        # 5) save to directory
+        save_file_name: str = os.path.join(self.openretina_processed_data_path, f"openretina_data_iter{self.iteration}.pkl")
+        with open(save_file_name, "wb") as f:
+            pickle.dump(
+                   {"test_response": test_response,
+                "train_response": train_response,
+                "test_stimulus": test_stimulus,
+                "train_stimulus": train_stimulus,
+                },
+                f,
+             )
+            
+        print(f"Saved openretina data to {save_file_name}")
+
+
+
+
+    def process_data(self,connect_and_activate: bool = True,save_iteration_data_for_openretina: bool = True):
         """
         main function =
         Call this function to run the preprocessor on each iteration of the loop
@@ -276,9 +396,12 @@ class Preprocessor1:
         
         self.upload_iteration_data()
         self.add_iteration_rois()
-        self.add_iteration_traces()
+        self.add_iteration_traces_and_preprocess()
+
+        if save_iteration_data_for_openretina:
+            self.save_iteration_data_for_openretina()
 
         self.iteration += 1
 
-        return (Traces() & dict(cond1=f'iter{self.iteration - 1}')).fetch() if return_traces else None
+        
 ###############################################################################################################################################################
