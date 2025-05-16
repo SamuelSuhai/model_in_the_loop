@@ -5,9 +5,12 @@ defaults:
   - stimulators: stimulators
 
 
+# absolute paths: change these to your own
+repo_directory: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/
+home_directory: /gpfs01/euler/User/ssuhai
+
 # stimulus informaiton 
-stimulus_type: closedloopdensenoise
-dir_where_new_stim_appear: GitRepos/simulation_closed_loop/data/stimuli/updated_loop_data
+stimulus_type: closedloopmousecamera
 stimulus_shape: [25,20,15]
 
 
@@ -16,6 +19,6 @@ stimulus_shape: [25,20,15]
 test_fraction: 0.2
 
 # where to save iteration processed data for openretina 
-openretina_processed_data_path: GitRepos/simulation_closed_loop/data/model_input
+openretina_processed_data_path: data/model_input
 
 debug: True

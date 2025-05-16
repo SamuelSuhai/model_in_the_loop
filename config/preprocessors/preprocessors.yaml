@@ -3,7 +3,6 @@ defaults:
 
 # dj imaging stuff
 username: ssuhai
-home_directory: /gpfs01/euler/User/ssuhai
 path_to_djimaging_rel_to_home: GitRepos
 path_to_djconfig_rel_to_home: datajoint
 

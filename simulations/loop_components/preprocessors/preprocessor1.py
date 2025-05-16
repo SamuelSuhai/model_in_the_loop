@@ -30,14 +30,16 @@ class Preprocessor1:
 
     """
 
+    permissible_stimulus_types = ["closedloopdensenoise", "closedloopmousecamera","closedloopchirp"]
+
     def __init__(self,
                  username: str,
                  home_directory: str,
+                 repo_directory: str,
                  path_to_djimaging_rel_to_home: str,
                  path_to_djconfig_rel_to_home: str,
                  userinfo: dict,
                  
-                 dir_where_new_stim_appear: str,
                  openretina_processed_data_path: str,
                  stimulus_shape: List[int],
 
@@ -50,11 +52,22 @@ class Preprocessor1:
                  ):
         """
         
-        
-
-
         Should I put these in configs?
         """
+
+
+        self.iteration: int = 0
+
+        # open retina stuff
+        self.test_fraction: float = test_fraction
+
+        self.debug: bool = debug
+        self.plotting: dict = plotting
+
+        # repo directory
+        self.repo_directory: str = repo_directory
+        assert os.path.exists(self.repo_directory), f"Path to repo does not exist: {self.repo_directory}"
+
         # check who is running command
         self.username: str = username
         assert self.username == subprocess.check_output(["whoami"]).decode().strip()
@@ -73,40 +86,75 @@ class Preprocessor1:
         assert os.path.isfile(self.config_file), f'Set the path to your config file: {self.config_file}'
 
         # information for UserInfo table
-        self.userinfo: dict = userinfo        
+        _data_dir = os.path.join(self.repo_directory, 'data','recordings','updated_loop_data')
+        assert os.path.exists(_data_dir), f"Path to data dir does not exist: {_data_dir}"
+        self.userinfo: dict = {**userinfo,'data_dir': _data_dir}      
         self.schema_name = f"ageuler_{self.username}_test"
         self.sleep_time_between_table_ops: int = sleep_time_between_table_ops
 
 
-        # set static stimulus information that does not change every loop iteration
-        self.stimulus_type: str = stimulus_type
-        self.dir_where_new_stim_appear: str = dir_where_new_stim_appear
-        self.stimulus_shape: List[int] = stimulus_shape 
 
-        stim_name_func = lambda x: f'closedloopdensenoise{x}'
-        alias_func = lambda x:  f"closedloopdensenoise{x}_cldn{x}_{x}closedloopdensenoise"
 
-        self.stimulus_info_dict: Dict[str, Any] = dict(
-            stim_name_func=stim_name_func, 
-            alias_func=alias_func, pix_n_x=20, pix_n_y=15, 
-            pix_scale_x_um=30, pix_scale_y_um=30, 
-            stim_trace=None, 
-            skip_duplicates=True
+        self.store_initial_stimulus_info(
+            stimulus_type=stimulus_type,
+            stimulus_shape=stimulus_shape,
         )
+        
 
         # set openretina processed data path
-        self.openretina_processed_data_path = os.path.join(home_directory,openretina_processed_data_path)
+        self.openretina_processed_data_path = os.path.join(self.repo_directory,openretina_processed_data_path)
         os.makedirs(self.openretina_processed_data_path, exist_ok=True)
+        if os.listdir(self.openretina_processed_data_path) != []:
+            warnings.warn(f"There are files already in {self.openretina_processed_data_path}. They will be overwritten", category=UserWarning)
 
 
-        self.iteration: int = 0
-
-        # open retina stuff
-        self.test_fraction: float = test_fraction
-
-        self.debug: bool = debug
-        self.plotting: dict = plotting
+ 
         
+    def store_initial_stimulus_info(self,
+                                    stimulus_type: str,
+                                    stimulus_shape: List[int],
+                                    ) -> None:
+        # TODO: these are configurations I think. Maybe they should be in a config file. Especially stimulus_info_dict
+
+        # set static stimulus information that does not change every loop iteration
+        self.stimulus_type: str = stimulus_type
+        
+        self.dir_where_new_stim_appear: str = os.path.join(self.repo_directory, 'data', 'stimuli','updated_loop_data')
+        self.stimulus_shape: List[int] = stimulus_shape 
+
+        if not self.stimulus_type in self.permissible_stimulus_types:
+            raise ValueError(f"stimulus_type must be one of {self.permissible_stimulus_types}")
+
+        if stimulus_type.lower() == 'closedloopdensenoise':
+            stim_name_func = lambda x: f'closedloopdensenoise{x}'
+            alias_func = lambda x:  f"closedloopdensenoise{x}_cldn{x}_{x}closedloopdensenoise"
+
+            self.stimulus_info_dict: Dict[str, Any] = dict(
+                stim_name_func=stim_name_func, 
+                alias_func=alias_func, pix_n_x=20, pix_n_y=15, 
+                pix_scale_x_um=30, pix_scale_y_um=30, 
+                stim_trace=None, 
+                skip_duplicates=True
+            )
+        elif stimulus_type.lower() == 'closedloopchirp':
+            raise NotImplementedError(f"stimulus type {stimulus_type} not implemented yet")
+        
+        elif stimulus_type.lower() == 'closedloopmousecamera':
+            stim_name_func = lambda x: f'closedloopmousecamera{x}'
+            alias_func = lambda x:  f"closedloopmousecamera{x}_clmc{x}_{x}closedloopmousecamera"
+
+            self.stimulus_info_dict: Dict[str, Any] = dict(
+                stim_name_func=stim_name_func, 
+                alias_func=alias_func,
+                stim_trace=None, 
+                skip_duplicates=True,
+                ntrigger_rep=123,
+                isrepeated=False,
+                framerate= 30,
+            )
+        else:
+            raise ValueError(f"stimulus type {stimulus_type} not recognized mut be part either closedloopdensenoise, chirp or closedloopmousecamera")
+
     def load_config(self) -> None:
         """
         load config file
@@ -174,18 +222,34 @@ class Preprocessor1:
         assert noise_stimulus.shape[0] * self.test_fraction % self.stimulus_shape[0] == 0 , f"Test stimulus shape {noise_stimulus.shape[0] * self.test_fraction} not divisible by {self.stimulus_shape[0]}"
         assert noise_stimulus.shape[0] * (1 - self.test_fraction) % self.stimulus_shape[0] == 0 , f"Train stimulus shape {noise_stimulus.shape[0] * (1 - self.test_fraction)} not divisible by {self.stimulus_shape[0]}"
         self.stimulus_info_dict['stim_trace'] = noise_stimulus
+        
+        stim_kwargs = self.stimulus_info_dict.copy()
+        stim_kwargs['stim_name'] = stim_kwargs['stim_name_func'](self.iteration)
+        stim_kwargs['alias'] = stim_kwargs['alias_func'](self.iteration)
+        stim_kwargs.pop('stim_name_func')
+        stim_kwargs.pop('alias_func')
 
         # add to database
-        Stimulus().add_noise(
-                            stim_name=self.stimulus_info_dict['stim_name_func'](self.iteration), 
-                                alias=self.stimulus_info_dict['alias_func'](self.iteration), 
-                                pix_n_x=self.stimulus_info_dict['pix_n_x'], 
-                                pix_n_y=self.stimulus_info_dict['pix_n_y'], 
-                                pix_scale_x_um=self.stimulus_info_dict['pix_scale_x_um'], 
-                                pix_scale_y_um=self.stimulus_info_dict['pix_scale_y_um'], 
-                                stim_trace=self.stimulus_info_dict['stim_trace'], 
-                                skip_duplicates=self.stimulus_info_dict['skip_duplicates'],
-                                )
+        Stimulus().add_noise(**stim_kwargs)
+        
+
+    def add_clmc_stimulus(self) -> None:
+        
+        # add stim_trace to dict
+        # TODO: add stim trace
+        current_stimulus_path = None
+        self.stimulus_info_dict['stim_trace'] = None
+
+        print("stimulus trace not implemented yet !!!!!!!!!!!")
+        
+        stim_kwargs = self.stimulus_info_dict.copy()
+        stim_kwargs['stim_name'] = stim_kwargs['stim_name_func'](self.iteration)
+        stim_kwargs['alias'] = stim_kwargs['alias_func'](self.iteration)
+        stim_kwargs.pop('stim_name_func')
+        stim_kwargs.pop('alias_func')
+
+        Stimulus().add_stimulus(**stim_kwargs)
+
 
 
 
@@ -206,12 +270,14 @@ class Preprocessor1:
         if self.stimulus_type.lower() == 'closedloopdensenoise':
             self.add_cldn_stimulus()
         
-        elif self.stimulus_type.lower() == 'chirp':
+        elif self.stimulus_type.lower() == 'closedloopchirp':
             # TODO: allow chirp for roi mask and classification
             raise NotImplementedError (f'stimulus type {self.stimulus_type} not implemented')   
         
+        elif self.stimulus_type.lower() == 'closedloopmousecamera':
+            self.add_clmc_stimulus()
         else:
-            raise NotImplementedError (f'stimulus type {self.stimulus_type} not implemented')
+            raise ValueError(f"stimulus type {self.stimulus_type} not recognized mut be closedloopdensenoise, chirp or closedloopmousecamera")
 
         sleep(self.sleep_time_between_table_ops)
 
@@ -295,8 +361,8 @@ class Preprocessor1:
 
         if self.debug:
             RoiMask().plot1()
-            save_path = self.plotting.get("save_path_rel_home", "GitRepos/simulation_closed_loop/plotting")
-            plt.gcf().savefig(os.path.join(self.home_directory,save_path, f"roi_mask_{self.iteration}.pdf"))
+            save_path = self.plotting.get("save_path", "plotting")
+            plt.gcf().savefig(os.path.join(self.repo_directory,save_path, f"roi_mask_{self.iteration}.pdf"))
 
 
 

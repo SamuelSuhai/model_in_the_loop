@@ -1,17 +1,5 @@
 'experimenter': 'closedlooptest' 
-# 'data_dir': ${hydra:runtime.cwd}/data/recordings/updated_loop_data # again this wont work in a notebook. use line below
-'data_dir': /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/updated_loop_data/
-
-
-
 # at what location what experimental information is stored in the file name
-# 'datatype_loc': 0
-# 'animal_loc': 1
-# 'region_loc': 2
-# 'field_loc': 3
-# 'stimulus_loc': 4
-# 'cond1_loc': 5
-
 'animal_loc': 1
 'region_loc': 2
 'field_loc': 3
