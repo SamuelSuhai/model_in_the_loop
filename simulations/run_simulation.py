@@ -5,9 +5,9 @@ from omegaconf import DictConfig, OmegaConf
 from dataclasses import dataclass
 from typing import List, Dict, Any
 # TODO: refactor by importing loop components based on config
-from simulations.loop_components.stimulators.stimulus_file_copier import StimulusFileCopier
-from simulations.loop_components.recorders.recording_file_copier import RecordingFileCopier
-from simulations.loop_components.preprocessors.preprocessor1 import Preprocessor1
+from simulations.loop_components.stimulus_file_copier import StimulusFileCopier
+from simulations.loop_components.recording_file_copier import RecordingFileCopier
+from simulations.loop_components.DJWrappers import Preprocessor1
 from time import sleep
 
 
