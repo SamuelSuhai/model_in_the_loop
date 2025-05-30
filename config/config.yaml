@@ -1,24 +1,23 @@
 defaults:
-  - preprocessors: preprocessors
-  - models: models
-  - recorders: recorders
-  - stimulators: stimulators
+  - _self_
+  - openretina@model_configs: hoefling_2024_core_readout_low_res
 
+DJ:
+  username: ssuhai
+  userinfo:
+    experimenter: 'closedlooptest' 
+    # at what location what experimental information is stored in the file name
+    animal_loc: 1
+    region_loc: 2
+    field_loc: 3
+    stimulus_loc: 4
+    cond1_loc: 5
 
-# absolute paths: change these to your own
-repo_directory: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/
-home_directory: /gpfs01/euler/User/ssuhai
-
-# stimulus informaiton 
-stimulus_type: closedloopmousecamera
-stimulus_shape: [25,20,15]
-
-
-
-# preprocessing and model need these
-test_fraction: 0.2
-
-# where to save iteration processed data for openretina 
-openretina_processed_data_path: data/model_input
+paths: 
+  # absolute paths: change these to your own
+  repo_directory: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/
+  home_directory: /gpfs01/euler/User/ssuhai
+  dj_config_directory: datajoint 
+  rgc_output_directory: datajoint/rgc_classifier # dir where classifier should be stored
 
 debug: True

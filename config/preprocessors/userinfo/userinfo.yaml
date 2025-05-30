@@ -1,7 +1,0 @@
-'experimenter': 'closedlooptest' 
-# at what location what experimental information is stored in the file name
-'animal_loc': 1
-'region_loc': 2
-'field_loc': 3
-'stimulus_loc': 4
-'cond1_loc': 5
