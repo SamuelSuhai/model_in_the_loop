@@ -8,7 +8,9 @@ from typing import List, Dict, Any
 # from simulations.loop_components.stimulus_file_copier import StimulusFileCopier
 # from simulations.loop_components.recording_file_copier import RecordingFileCopier
 from loop_components.dj_wrappers import OpenRetinaWrapper
+from loop_components.model_to_stimulus import from_data_to_mei_video
 from time import sleep
+
 
 
 def create_loop_components(
@@ -33,7 +35,7 @@ def create_loop_components(
     # )
 
     # create preprocessor
-    os.environ["DJ_SUPPORT_FILEPATH_MANAGEMENT"] = "True"
+    os.environ["DJ_SUPPORT_FILEPATH_MANAGEMENT"] = "TRUE"
     
     openretinawrapper = OpenRetinaWrapper(
                     username=cfg.DJ.username, # type: ignore
@@ -58,12 +60,22 @@ def create_loop_components(
 @hydra.main(version_base="1.3", config_path="../config/", config_name="config",)
 def run_simulation(cfg: DictConfig) -> None:
 
-
+    ## The entire iteration
     # recorder, openretinawrapper, model, stimulator = create_loop_components(cfg)
     openretinawrapper = create_loop_components(cfg)
     openretinawrapper.setup()
-    openretinawrapper.process_iteration_data()
+    raw_neuron_data_dict = openretinawrapper.process_iteration_data()
 
+
+
+    # # for only testing parts of the loop  
+    # openretinawrapper.load_config()
+    # openretinawrapper.load_tables()
+    # openretinawrapper.clean_up(at_processing_stage="data_extraction")
+    # raw_neuron_data_dict = openretinawrapper.extract_data()
+
+
+    from_data_to_mei_video(cfg, raw_neuron_data_dict,0)
     
     
 

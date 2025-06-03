@@ -42,6 +42,8 @@ from openretina.models.core_readout import load_core_readout_model
 from openretina.utils.nnfabrik_model_loading import load_ensemble_model_from_remote
 from openretina.utils.plotting import play_stimulus, plot_stimulus_composition
 
+from utils import time_it
+
 log = logging.getLogger(__name__)
 
 
@@ -75,7 +77,7 @@ def load_pretrained_model(checkpoint_path: str) -> BaseCoreReadout:
     model = load_core_readout_model(checkpoint_path,device=DEVICE, is_gru_model=is_gru_model)
     return model
 
-
+@time_it
 def generate_stimulus(model: BaseCoreReadout,new_sessoin_id:str,neuron_id: List[int] | int = 0) -> torch.Tensor:
 
     # check if model params are on same device as stimulus
@@ -104,7 +106,7 @@ def generate_stimulus(model: BaseCoreReadout,new_sessoin_id:str,neuron_id: List[
 
     return stimulus[0] # return first batch
 
-    
+@time_it    
 def create_avi_from_tensor(stimulus: torch.Tensor, filename: str, fps: int = 50, original_stimulus_stats: Dict[str,float] | Any = None) -> None:
     """Crates an AVI file from toch.Tensor stimulus and saves it at `filename`"""
     import numpy as np
@@ -150,7 +152,7 @@ def create_avi_from_tensor(stimulus: torch.Tensor, filename: str, fps: int = 50,
 
     log.info(f"AVI file saved as {filename}")
 
-
+@time_it
 def train_model_online(cfg: DictConfig,
                        neuron_data_dict:Dict[str,ResponsesTrainTestSplit],
                        movies_dict:Dict[str,MoviesTrainTestSplit] | MoviesTrainTestSplit) -> BaseCoreReadout:
@@ -169,7 +171,7 @@ def train_model_online(cfg: DictConfig,
   
     if cfg.check_stimuli_responses_match:
         for session, neuron_data in neuron_data_dict.items():
-            neuron_data.check_matching_stimulus(movies_dict[session]) 
+            neuron_data.check_matching_stimulus(movies_dict[session]) # type: ignore
 
     dataloaders = hydra.utils.instantiate( # dict[str, dict[str, DataLoader]]
         cfg.dataloader,
@@ -235,6 +237,7 @@ def train_model_online(cfg: DictConfig,
 
     return model
 
+@time_it
 def preprocess_for_openretina(raw_neuron_data_dict:Dict[str,Dict[str,Any]]) -> Dict[str,ResponsesTrainTestSplit]:
     filt_neuron_data =  filter_responses(raw_neuron_data_dict)
     neuron_data_dict =  make_final_responses(filt_neuron_data) 
@@ -249,7 +252,6 @@ def from_data_to_mei_video(cfg: DictConfig, raw_neuron_data_dict:Dict[str,Dict[s
     
     # load and refine model
     model = train_model_online(openretina_cfg,neuron_data_dict,movies_dict)
-
     new_session_id = list(raw_neuron_data_dict.keys())[0]
     new_stimulus = generate_stimulus(model,new_session_id,neuron_id=neuron_ids)
 
