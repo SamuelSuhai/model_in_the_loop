@@ -1,5 +1,22 @@
 import os 
 import shutil
+import glob 
+
+def copy_stim_files(repo_directory,stim_file,new_dir,iter_nr) -> None:
+    """
+    copy stimulus files from dir to new_dir
+    """
+    for ending in ['.smp','.smh']:
+        source_path = os.path.join(repo_directory, 'data', 'recordings','static_test_data',stim_file + ending)
+        destination_path = os.path.join(new_dir, f"{stim_file}_iter{iter_nr}{ending}")
+        
+        if not os.path.exists(source_path):
+            raise FileNotFoundError(f"Source path {source_path} does not exist")
+        
+        shutil.copy(source_path, destination_path)
+        print(f"Copied noise file from {source_path} to {destination_path}")
+
+
 
 class StimulusFileCopier:
 

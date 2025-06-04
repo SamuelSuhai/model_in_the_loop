@@ -177,7 +177,7 @@ class OpenRetinaWrapper:
 
 
         # spike estimation
-        self('CascadeTraceParams')().add_default()
+        self('CascadeTraceParams')().add_default(stim_name=['mouse_cam'])
         self('CascadeParams')().add_default(model_name = 'Global_EXC_7.8125Hz_smoothing200ms_causalkernel') # for spike estimation itself
         
 
@@ -207,7 +207,7 @@ class OpenRetinaWrapper:
         sleep(self.sleep_time_between_table_ops)
 
 ##################################################################### During iteration functions ##############################################################################
-    @time_it
+    #@time_it
     def upload_iteration_metadata(self) -> None:
         
 
@@ -225,7 +225,7 @@ class OpenRetinaWrapper:
  
         
 
-    @time_it
+    #@time_it
     def add_iteration_rois(self) -> None:
         """
   
@@ -251,7 +251,7 @@ class OpenRetinaWrapper:
         self('Roi')().populate(processes=20, display_progress=True)
         sleep(self.sleep_time_between_table_ops)
 
-    @time_it
+    #@time_it
     def add_iteration_traces(self) -> None:
         
 
@@ -262,7 +262,7 @@ class OpenRetinaWrapper:
         sleep(self.sleep_time_between_table_ops)
 
 
-    @time_it
+    #@time_it
     def add_trace_reformatting(self,snippets:bool = True, averages:bool = True,) -> None:
         
         if snippets:
@@ -271,13 +271,13 @@ class OpenRetinaWrapper:
         if averages:
             self('Averages')().populate(processes=20, display_progress=True)
 
-    @time_it
+    #@time_it
     def add_quality_metrics(self) -> None:
 
         self('ChirpQI')().populate(display_progress=True, processes=20)
         self('OsDsIndexes')().populate(display_progress=True, processes=20)
 
-    @time_it
+    #@time_it
     def add_spikes(self) -> None:
 
         self('CascadeTraces')().populate()
@@ -310,7 +310,7 @@ class OpenRetinaWrapper:
         )
 
     
-    @time_it
+    #@time_it
     def add_celltype_assignments(self) -> None:
 
         self('Baden16Traces')().populate(display_progress=True, processes=20)
@@ -322,7 +322,7 @@ class OpenRetinaWrapper:
         #     self('CelltypeAssignment')().plot(threshold_confidence=0.5)
 
     
-    @time_it
+    #@time_it
     def extract_data(self) -> Dict[str,Dict[str, Any]]:
         
         session_dict = self('OpenRetinaHoeflingFormat')().iteration_main()
@@ -343,10 +343,9 @@ class OpenRetinaWrapper:
         self.add_iteration_traces()
 
 
-        if self.iteration == 0:
-            self.add_trace_reformatting()
-            self.add_quality_metrics()
-            self.add_celltype_assignments()
+        self.add_trace_reformatting()
+        self.add_quality_metrics()
+        self.add_celltype_assignments()
 
 
  
