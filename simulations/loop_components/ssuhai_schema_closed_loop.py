@@ -1,6 +1,6 @@
 import re
 import numpy as np
-from typing import Dict
+from typing import Dict, Any, Tuple
 ########################## Basics for RGC type classification ##########################
 from abc import abstractmethod
 import datetime
@@ -61,13 +61,112 @@ class RetinalRoiLocation(RetinalRoiLocationTemplate):
     expinfo_table = Experiment.ExpInfo
 
 
+
+class PeakSTAPositionTemplate(dj.Computed):
+    database = ""
+
+    @property
+    def definition(self):
+        definition = """
+        # Peak position of the STA receptive field relatieve to the optic disk.
+        -> self.sta_table
+        ---
+        peak_x_um: float
+        peak_y_um: float
+        """
+        return definition
+
+    @property
+    @abstractmethod
+    def sta_table(self):
+        pass
+
+    @property
+    @abstractmethod
+    def relative_field_location_table(self):
+        pass
+
+    @property
+    @abstractmethod
+    def stimulus_table(self):
+        pass
+
+    @staticmethod
+    def get_rf_spatial_max_indices(rf: np.ndarray) -> Any:
+        """Get the spatial indices of the maximum of the abs value in the RF."""
+        max_indices = np.unravel_index(np.argmax(np.abs(rf)), rf.shape)
+        t,x,y = max_indices
+        return (x,y)
+    
+    def convert_rf_indices_to_um(self,max_indices) -> Tuple[float, float]:
+        """
+        Note x is axis 1 (because goes from 0 to 20) and y is axis 2, in output of STA rf
+        """
+        max_x_idx,max_y_idx = max_indices
+        
+        # Get stimulus parameters
+        stim_query = self.stimulus_table & {'stim_family': 'noise'}
+        stim_dict = stim_query.fetch1('stim_dict')
+        
+        # Get pixel size and offset
+        pixel_size_x_um = stim_dict.get('pix_scale_x_um', 30)
+        pixel_size_y_um = stim_dict.get('pix_scale_y_um', 30)
+        offset_x_um = stim_dict.get('offset_x_um', 0.0)
+        offset_y_um = stim_dict.get('offset_y_um', 0.0)
+        
+        # Calculate position in microns
+        x_um = max_x_idx * pixel_size_x_um + offset_x_um
+        y_um = max_y_idx * pixel_size_y_um + offset_y_um
+        
+        return (x_um, y_um)
+
+        
+
+    def get_rf_position_relative_to_optic_disk(self,rf_array: np.ndarray) -> Tuple[float, float]:
+        """
+
+        """
+        # Step 1: Get maximum spatial indices
+        max_indices = self.get_rf_spatial_max_indices(rf_array)
+        
+        # Step 2: Convert to microns relative to field center
+        rf_x_field,rf_y_rel_field = self.convert_rf_indices_to_um(max_indices)
+        
+        # Step 3: Add field location to get position relative to optic disk
+        field_loc_rel_optic_disk_um = (self.relative_field_location_table).fetch1("relx","rely")
+        
+        # Return all results in a dictionary
+        return rf_x_field + field_loc_rel_optic_disk_um[0], rf_y_rel_field + field_loc_rel_optic_disk_um[1]
+    
+    def make(self, key):
+
+        rf_array = (self.sta_table & key).fetch1("rf")
+
+        peak_x_um, peak_y_um = self.get_rf_position_relative_to_optic_disk(rf_array) ADD FIELD RESTRICTION SOMEHOW OR JOIN WITH RELPOS TABLE 
+
+        self.insert1({
+            **key,
+            'peak_x_um': peak_x_um,
+            'peak_y_um': peak_y_um
+        })
+
+
+@schema
+class PeakSTAPosition(PeakSTAPositionTemplate):
+    sta_table = STA
+    relative_field_location_table = RelativeFieldLocation
+    stimulus_table = Stimulus
+
+
+
+
+
 ################### open retina #########################
 
 class OpenRetinaHoeflingFormatTemplate(dj.Manual):
     database = ""
     insert_real_data = False
-    every_iteration = False # if True then the class assumes the data is extracted to openretina each iteration, 
-    # instead of after some iteratios passed 
+    ignore_iteration_as_primary_key = False # if True then the class assumes the data is extracted over multiple iterations and cond1 is not used as primary key.
 
     @property
     def definition(self):
@@ -155,33 +254,23 @@ class OpenRetinaHoeflingFormatTemplate(dj.Manual):
     def get_query(self, key):
 
         # Define stimulus keys TODO: move hardcoded key to dynamically get from stimulus table
-        chirp_key = {"stim_name": "gChirp"}
-        mb_key = {"stim_name": "movingbar"}
         natural_movie_key = {"stim_name": "mouse_cam"}
 
-        # join all traces and spikes for the given iteration (key)
+        # join all traces
         all_traces = (
             self.preprocess_traces_table() *
             self.traces_table() *
-            self.cascade_spikes_table() *
             self.presentation_table().proj("pres_data_file", "triggertimes")
         ) & key
 
-        # mappings for changing the field names, since for different stimuli the field names should be different
-        chirp_mapping = {
-            "chirp_raw_traces": "trace",
-            "chirp_smoothed_traces": "smoothed_trace",
-            "chirp_preprocessed_traces": "pp_trace",
-            "chirp_stim_name": "stim_name",
-            "chirp_traces_times_t0": "trace_t0",
-            "chirp_traces_times_dt": "trace_dt",
-            "chirp_preprocessed_traces_times_t0": "pp_trace_t0",
-            "chirp_preprocessed_traces_times_dt": "pp_trace_dt",
-            "chirp_trigger_times": "triggertimes",
-            "chirp_spikes": "spike_prob",
-            "chirp_spike_times": "spike_prob_times"
-        }
+        # get stimulus specific queries
+        natural_query = (all_traces & natural_movie_key)
 
+        # Check if spike data exists for each stimulus type
+        natural_has_spikes = len(self.cascade_spikes_table() & key & natural_movie_key) > 0  
+        
+
+        # mappings for changing the field names, since for different stimuli the field names should be different
         natural_mapping = {
             "natural_raw_traces": "trace",
             "natural_smoothed_traces": "smoothed_trace",
@@ -193,29 +282,22 @@ class OpenRetinaHoeflingFormatTemplate(dj.Manual):
             "natural_preprocessed_traces_times_dt": "pp_trace_dt",
             "natural_trigger_times": "triggertimes",
             "natural_pres_data_file": "pres_data_file",
-            "natural_spikes": "spike_prob",
-            "natural_spike_times": "spike_prob_times"
         }
 
-        mb_mapping = {
-            "mb_raw_traces": "trace",
-            "mb_smoothed_traces": "smoothed_trace",
-            "mb_preprocessed_traces": "pp_trace",
-            "mb_stim_name": "stim_name",
-            "mb_traces_times_t0": "trace_t0",
-            "mb_traces_times_dt": "trace_dt",
-            "mb_preprocessed_traces_times_t0": "pp_trace_t0",
-            "mb_preprocessed_traces_times_dt": "pp_trace_dt",
-            "mb_trigger_times": "triggertimes",
-            "mb_spikes": "spike_prob",
-            "mb_spike_times": "spike_prob_times"
-        }
+        # Conditionally add spike fields to mappings and join the queries
+        # if the spikes exist for the stimulus type
+        if natural_has_spikes:
+            natural_query = natural_query * (self.cascade_spikes_table() & key & natural_movie_key)
+            natural_mapping.update({
+                "natural_spikes": "spike_prob",
+                "natural_spike_times": "spike_prob_times"
+            })
 
-        # create a table that has one row for each ROI and contains all traces for all stimuli
-        all_roi_traces = (all_traces & chirp_key).proj(**chirp_mapping) * \
-            (all_traces & natural_movie_key).proj(**natural_mapping) * \
-            (all_traces & mb_key).proj(**mb_mapping)
-
+        # create a table that has one row for each ROI and contains all traces (and possibly spikes)
+        if self.ignore_iteration_as_primary_key:
+            all_roi_traces = natural_query.proj(**natural_mapping.update({"natural_cond1": "cond1"})) # simply rename the iteration key
+        else:
+            all_roi_traces = natural_query.proj(**natural_mapping)
 
         # add the celltype assignment
         celltype_table = self.celltype_assignment_table().proj(group_assignment="celltype", group_confidences="confidence") 
@@ -269,7 +351,7 @@ class OpenRetinaHoeflingFormatTemplate(dj.Manual):
         "d_qi": "d_qi",
         "roi_size_um2": "roi_size_um2"
         }
-        stimuli = ["natural", "chirp", "mb"]
+        stimuli = ["natural"]#, "chirp", "mb"]
         
         partial_name_trace_fields = ["trace","spike","trigger_times"]
         full_name_trace_fields = [ key for key in all_data[0].keys() if any(partial_name in key for partial_name in partial_name_trace_fields) ]
@@ -339,7 +421,7 @@ class OpenRetinaHoeflingFormatTemplate(dj.Manual):
         
         # get the key for the iteration
         key = (self.field_table - self).proj().fetch(as_dict=True)[0]
-        if not self.every_iteration:
+        if self.ignore_iteration_as_primary_key:
             key.pop("cond1") # remove iteration dependence because we want to get all stimuli
 
         # get all iteration data in long format:
@@ -354,7 +436,7 @@ class OpenRetinaHoeflingFormatTemplate(dj.Manual):
 
 
         # get the session name from the key
-        session_name = "session_" + self.get_field_key(
+        session_name = "online_session_" + self.get_field_key(
                 session_data_dict["field"],
                 session_data_dict["eye"],
                 session_data_dict["date"],

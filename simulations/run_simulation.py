@@ -69,37 +69,45 @@ def run_simulation(cfg: DictConfig) -> None:
 
 
     # for cleaning up 
-    openretinawrapper.load_config()
-    openretinawrapper.load_tables()
-    # openretinawrapper.clean_up(at_processing_stage="setup")
+    # openretinawrapper.load_config()
+    # openretinawrapper.load_tables()
+    # # openretinawrapper.clean_up(at_processing_stage="setup")
     # openretinawrapper.add_all_stimuli()
-    # sleep(1)
+    # sleep(1)    
     # openretinawrapper.set_params_and_userinfo()
+
     # sleep(1)
     
-    files = ["M1_LR_GCL0_DN","M1_LR_GCL0_Chirp", "M1_LR_GCL0_MB","M1_LR_GCL0_MC18"]
-    for iter,file in enumerate(files):
-        copy_stim_files(
-            repo_directory=cfg.paths.repo_directory, # type: ignore
-            stim_file=file, # type: ignore
-            new_dir='/gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/updated_loop_data/20200226/1/Raw',
-            iter_nr=iter,)
-        # add sleep
-        raw_neuron_data_dict = openretinawrapper.process_iteration_data()
+    # files = ["M1_LR_GCL0_DN","M1_LR_GCL0_Chirp", "M1_LR_GCL0_MB","M1_LR_GCL0_MC18"]
+    # for iter,file in enumerate(files):
+    #     copy_stim_files(
+    #         repo_directory=cfg.paths.repo_directory, # type: ignore
+    #         stim_file=file, # type: ignore
+    #         new_dir='/gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/updated_loop_data/20200226/1/Raw',
+    #         iter_nr=0,)
+        
+    # #
+    # raw_neuron_data_dict = openretinawrapper.process_iteration_data()
         
 
 
-    # # for only testing parts of the loop
-    # openretinawrapper.load_config()
-    # openretinawrapper.load_tables()
-    # openretinawrapper.clean_up(at_processing_stage="data_extraction")
-    # raw_neuron_data_dict = openretinawrapper.extract_data()
+    # for only testing parts of the loop
+    openretinawrapper.load_config()
+    openretinawrapper.load_tables()
+    openretinawrapper.clean_up(at_processing_stage="data_extraction")
+    raw_neuron_data_dict = openretinawrapper.extract_data()
 
 
 
 
+    if raw_neuron_data_dict is not None: 
+        from_data_to_mei_video(cfg, raw_neuron_data_dict,0)
 
-    # from_data_to_mei_video(cfg, raw_neuron_data_dict,0)
+    print("") # look at  STA generation
+    from djimaging.schemas.full_rgc_schema import DNoiseTraceParams,DNoiseTrace,STAParams,STA
+
+    DNoiseTraceParams.add_default()
+    
 
     openretinawrapper.clean_up(at_processing_stage="setup")
 

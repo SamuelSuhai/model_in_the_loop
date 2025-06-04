@@ -5,11 +5,11 @@ import shutil
 import warnings
 warnings.simplefilter("ignore", FutureWarning)
 from time import sleep 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 
-from utils import time_it  
+from simulations.loop_components.utils import time_it
 
 class OpenRetinaWrapper:
     """
@@ -73,13 +73,16 @@ class OpenRetinaWrapper:
         
 
         from djimaging.user.ssuhai.schemas.ssuhai_schema_closed_loop import (
-                UserInfo, Experiment, Field, Stimulus, RoiMask, Roi, Traces,
+                UserInfo, Experiment, OpticDisk,RelativeFieldLocation, RelativeRoiLocation,
+                Field, Stimulus, RoiMask, Roi, Traces,
                 Presentation, RawDataParams, PreprocessParams, PreprocessTraces,
                 Snippets, Averages, ChirpQI, OsDsIndexes,
                 ClassifierMethod, ClassifierTrainingData, Classifier,
                 Baden16Traces, CelltypeAssignment,
                 CascadeTraceParams, CascadeParams, CascadeTraces, CascadeSpikes,
-                OpenRetinaHoeflingFormat, schema
+                DNoiseTraceParams,DNoiseTrace,STAParams,STA,
+                PeakSTAPosition,
+                OpenRetinaHoeflingFormat, schema,
             )
         
         self.schema = schema
@@ -88,6 +91,9 @@ class OpenRetinaWrapper:
             'UserInfo': UserInfo,
             'Experiment': Experiment,
             'Field': Field,
+            'OpticDisk': OpticDisk,
+            'RelativeFieldLocation': RelativeFieldLocation,
+            'RelativeRoiLocation': RelativeRoiLocation,
             'Stimulus': Stimulus,
             'RoiMask': RoiMask,
             'Roi': Roi,
@@ -109,6 +115,11 @@ class OpenRetinaWrapper:
             'CascadeParams': CascadeParams,
             'CascadeTraces': CascadeTraces,
             'CascadeSpikes': CascadeSpikes,
+            'DNoiseTraceParams': DNoiseTraceParams,
+            'DNoiseTrace': DNoiseTrace,
+            'STAParams': STAParams,
+            'STA': STA,
+            'PeakSTAPosition': PeakSTAPosition,
             'OpenRetinaHoeflingFormat': OpenRetinaHoeflingFormat
         }
 
@@ -175,10 +186,16 @@ class OpenRetinaWrapper:
         self('ClassifierMethod')().add_default(skip_duplicates=True)
         self('Classifier')().populate()
 
+        # rf estimation 
+        self('DNoiseTraceParams')().add_default()
+        self('STAParams')().add_default()
+
 
         # spike estimation
-        self('CascadeTraceParams')().add_default(stim_name=['mouse_cam'])
+        self('CascadeTraceParams')().add_default(stim_names=['mouse_cam'])
         self('CascadeParams')().add_default(model_name = 'Global_EXC_7.8125Hz_smoothing200ms_causalkernel') # for spike estimation itself
+
+
         
 
     def setup(self) -> None:
@@ -215,9 +232,15 @@ class OpenRetinaWrapper:
         if self.iteration == 0:
             self('Experiment')().rescan_filesystem(verboselvl=3)
             sleep(self.sleep_time_between_table_ops)
+            
+            self('OpticDisk')().populate(processes=20, display_progress=True)
+
 
 
         self('Field')().rescan_filesystem(verboselvl=3)
+        sleep(self.sleep_time_between_table_ops)
+
+        self('RelativeFieldLocation')().populate(processes=20, display_progress=True)
         sleep(self.sleep_time_between_table_ops)
 
         self('Presentation')().populate(processes=20, display_progress=True)
@@ -263,19 +286,28 @@ class OpenRetinaWrapper:
 
 
     #@time_it
-    def add_trace_reformatting(self,snippets:bool = True, averages:bool = True,) -> None:
+    def add_trace_reformatting(self) -> None:
         
-        if snippets:
-            self('Snippets')().populate(processes=20, display_progress=True)
         
-        if averages:
-            self('Averages')().populate(processes=20, display_progress=True)
+        self('Snippets')().populate(processes=20, display_progress=True)
+        
+        sleep(self.sleep_time_between_table_ops)
+        self('Averages')().populate(processes=20, display_progress=True)
 
     #@time_it
     def add_quality_metrics(self) -> None:
 
         self('ChirpQI')().populate(display_progress=True, processes=20)
         self('OsDsIndexes')().populate(display_progress=True, processes=20)
+
+
+    def add_sta(self) -> None:
+
+        self('DNoiseTrace')().populate(processes=20, display_progress=True)
+        sleep(self.sleep_time_between_table_ops)
+
+        self('STA')().populate(processes=20, display_progress=True)
+        sleep(self.sleep_time_between_table_ops)
 
     #@time_it
     def add_spikes(self) -> None:
@@ -321,16 +353,23 @@ class OpenRetinaWrapper:
         #     self('CelltypeAssignment')().plot(threshold_confidence=0.25)
         #     self('CelltypeAssignment')().plot(threshold_confidence=0.5)
 
+
+    def add_peak_sta_positions(self) -> None:
+
+        self('PeakSTAPosition')().populate(processes=20, display_progress=True)
+        sleep(self.sleep_time_between_table_ops)
+
+       
     
     #@time_it
-    def extract_data(self) -> Dict[str,Dict[str, Any]]:
+    def extract_data(self) -> Dict[str,Dict[str, Any]] | None:
         
-        session_dict = self('OpenRetinaHoeflingFormat')().iteration_main()
+        session_dict = self('OpenRetinaHoeflingFormat')().extract_data()
         return session_dict
 
 
 
-    def process_iteration_data(self,) -> Dict[str,Dict[str, Any]]:
+    def process_iteration_data(self,) -> Dict[str,Dict[str, Any]] | None:
         """
         main function =
         Call this function to run the pipeline on each iteration of the loop
@@ -347,6 +386,9 @@ class OpenRetinaWrapper:
         self.add_quality_metrics()
         self.add_celltype_assignments()
 
+        self.add_sta()
+        self.add_peak_sta_positions()
+
 
  
         self.add_spikes()
@@ -359,6 +401,7 @@ class OpenRetinaWrapper:
 
         
 ##################################################################  Other utils  #############################################################################################
+    
     def clean_up(self, at_processing_stage = 'setup') -> None:
             """
             Clear schema tables.
@@ -379,6 +422,7 @@ class OpenRetinaWrapper:
                 'Traces',
                 'PreprocessTraces',
                 'Presentation',
+
                 'CascadeTraces',
                 'CascadeSpikes',
             ]
