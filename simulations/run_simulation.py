@@ -64,14 +64,17 @@ def run_simulation(cfg: DictConfig) -> None:
     # ## The entire iteration
     # # recorder, openretinawrapper, model, stimulator = create_loop_components(cfg)
     openretinawrapper = create_loop_components(cfg)
+
     # openretinawrapper.setup()
     # raw_neuron_data_dict = openretinawrapper.process_iteration_data()
 
 
-    # for cleaning up 
-    # openretinawrapper.load_config()
-    # openretinawrapper.load_tables()
-    # # openretinawrapper.clean_up(at_processing_stage="setup")
+    # FOR CLEANING UP
+    openretinawrapper.load_config()
+    openretinawrapper.load_tables()
+    openretinawrapper.clean_up(at_processing_stage="setup")
+
+
     # openretinawrapper.add_all_stimuli()
     # sleep(1)    
     # openretinawrapper.set_params_and_userinfo()
@@ -88,28 +91,26 @@ def run_simulation(cfg: DictConfig) -> None:
         
     # #
     # raw_neuron_data_dict = openretinawrapper.process_iteration_data()
-        
+    
+    # openretinawrapper.load_config()
+    # openretinawrapper.load_tables()
+    # raw_neuron_data_dict = openretinawrapper.extract_data()
+
+    # if raw_neuron_data_dict is not None: 
+    #     from_data_to_mei_video(cfg, raw_neuron_data_dict,0)
 
 
-    # for only testing parts of the loop
-    openretinawrapper.load_config()
-    openretinawrapper.load_tables()
-    openretinawrapper.clean_up(at_processing_stage="data_extraction")
-    raw_neuron_data_dict = openretinawrapper.extract_data()
-
-
+    # FULL LOOP
+    
+    openretinawrapper.setup()
+    raw_neuron_data_dict = openretinawrapper.process_iteration_data()
 
 
     if raw_neuron_data_dict is not None: 
         from_data_to_mei_video(cfg, raw_neuron_data_dict,0)
 
-    print("") # look at  STA generation
-    from djimaging.schemas.full_rgc_schema import DNoiseTraceParams,DNoiseTrace,STAParams,STA
+    openretinawrapper.clean_up(at_processing_stage="setup")    
 
-    DNoiseTraceParams.add_default()
-    
-
-    openretinawrapper.clean_up(at_processing_stage="setup")
 
 
 if __name__ == "__main__":

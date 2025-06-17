@@ -20,4 +20,4 @@ paths:
   dj_config_directory: datajoint 
   rgc_output_directory: datajoint/rgc_classifier # dir where classifier should be stored
 
-debug: True
+debug: False

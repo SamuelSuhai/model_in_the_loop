@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 
-from simulations.loop_components.utils import time_it
+from .utils import time_it
 
 class OpenRetinaWrapper:
     """
@@ -23,7 +23,7 @@ class OpenRetinaWrapper:
                  rgc_output_directory: str,
                  
                  userinfo: dict,
-                 
+                
                  sleep_time_between_table_ops: int  = 1,
                  debug: bool = False,
                  plotting: dict = {},
@@ -34,6 +34,7 @@ class OpenRetinaWrapper:
         """
         self.iteration: int = 0
         self.debug: bool = debug
+        self.multiprocessing_threads: int = 20 if not debug else 1 # this is so I can go in with debugger wo problems othrewise get problems
         self.plotting: dict = plotting
         self.sleep_time_between_table_ops: int = sleep_time_between_table_ops
         self.tables = {}
@@ -224,7 +225,7 @@ class OpenRetinaWrapper:
         sleep(self.sleep_time_between_table_ops)
 
 ##################################################################### During iteration functions ##############################################################################
-    #@time_it
+    @time_it
     def upload_iteration_metadata(self) -> None:
         
 
@@ -248,7 +249,7 @@ class OpenRetinaWrapper:
  
         
 
-    #@time_it
+    @time_it
     def add_iteration_rois(self) -> None:
         """
   
@@ -274,7 +275,7 @@ class OpenRetinaWrapper:
         self('Roi')().populate(processes=20, display_progress=True)
         sleep(self.sleep_time_between_table_ops)
 
-    #@time_it
+    @time_it
     def add_iteration_traces(self) -> None:
         
 
@@ -285,7 +286,7 @@ class OpenRetinaWrapper:
         sleep(self.sleep_time_between_table_ops)
 
 
-    #@time_it
+    @time_it
     def add_trace_reformatting(self) -> None:
         
         
@@ -294,22 +295,22 @@ class OpenRetinaWrapper:
         sleep(self.sleep_time_between_table_ops)
         self('Averages')().populate(processes=20, display_progress=True)
 
-    #@time_it
+    @time_it
     def add_quality_metrics(self) -> None:
 
-        self('ChirpQI')().populate(display_progress=True, processes=20)
-        self('OsDsIndexes')().populate(display_progress=True, processes=20)
+        self('ChirpQI')().populate(display_progress=True, processes=self.multiprocessing_threads)
+        self('OsDsIndexes')().populate(display_progress=True, processes=self.multiprocessing_threads)
 
-
+    @time_it
     def add_sta(self) -> None:
 
         self('DNoiseTrace')().populate(processes=20, display_progress=True)
         sleep(self.sleep_time_between_table_ops)
 
-        self('STA')().populate(processes=20, display_progress=True)
+        self('STA')().populate(processes=self.multiprocessing_threads, display_progress=True)
         sleep(self.sleep_time_between_table_ops)
 
-    #@time_it
+    @time_it
     def add_spikes(self) -> None:
 
         self('CascadeTraces')().populate()
@@ -342,10 +343,10 @@ class OpenRetinaWrapper:
         )
 
     
-    #@time_it
+    @time_it
     def add_celltype_assignments(self) -> None:
 
-        self('Baden16Traces')().populate(display_progress=True, processes=20)
+        self('Baden16Traces')().populate(display_progress=True, processes=self.multiprocessing_threads)
         self('CelltypeAssignment')().populate(display_progress=True)
 
         # if self.debug:
@@ -353,7 +354,7 @@ class OpenRetinaWrapper:
         #     self('CelltypeAssignment')().plot(threshold_confidence=0.25)
         #     self('CelltypeAssignment')().plot(threshold_confidence=0.5)
 
-
+    @time_it
     def add_peak_sta_positions(self) -> None:
 
         self('PeakSTAPosition')().populate(processes=20, display_progress=True)
@@ -361,7 +362,7 @@ class OpenRetinaWrapper:
 
        
     
-    #@time_it
+    @time_it
     def extract_data(self) -> Dict[str,Dict[str, Any]] | None:
         
         session_dict = self('OpenRetinaHoeflingFormat')().extract_data()
@@ -390,7 +391,6 @@ class OpenRetinaWrapper:
         self.add_peak_sta_positions()
 
 
- 
         self.add_spikes()
         iteration_data = self.extract_data()
 
@@ -422,6 +422,10 @@ class OpenRetinaWrapper:
                 'Traces',
                 'PreprocessTraces',
                 'Presentation',
+                'PeakSTAPosition',
+               
+                'DNoiseTrace',
+                'STA',
 
                 'CascadeTraces',
                 'CascadeSpikes',
@@ -448,7 +452,9 @@ class OpenRetinaWrapper:
                 'CascadeTraceParams',
                 'CascadeParams',
                 'Baden16Traces',
-                'CelltypeAssignment'
+                'CelltypeAssignment',
+                'DNoiseTraceParams',
+                'STAParams',
             ]
             
             # Tables to delete based on 'all' parameter
@@ -467,7 +473,7 @@ class OpenRetinaWrapper:
                     print(f"Deleting table: {table_name}")
                     
                     self(table_name)().delete()
-                sleep(self.sleep_time_between_table_ops)
+                sleep(self.sleep_time_between_table_ops / 5)
             
             # check if there are ROIs dir in recording dir with Pre and Raw and delete it if so
             roi_dir = os.path.join(self.userinfo['data_dir'], '20200226','1','ROIs')
