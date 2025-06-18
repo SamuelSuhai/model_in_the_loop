@@ -253,6 +253,12 @@ def save_new_stimulus_position(new_session_id: str ,full_path: str,raw_neuron_da
     x = raw_neuron_data_dict[new_session_id].get("rf_peak_x_um",0)[neuron_id] 
     y = raw_neuron_data_dict[new_session_id].get("rf_peak_y_um",0)[neuron_id]
 
+    # convert from array values to type yaml perser can handle
+    if hasattr(x, "item"):
+        x = float(x.item())
+    if hasattr(y, "item"):
+        y = float(y.item())
+
     stim_metadata = {"position":{"x": x, "y": y}}
     
     with open(full_path, "w") as f:
