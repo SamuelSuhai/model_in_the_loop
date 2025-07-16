@@ -69,10 +69,10 @@ def run_simulation(cfg: DictConfig) -> None:
     # raw_neuron_data_dict = openretinawrapper.process_iteration_data()
 
 
-    # FOR CLEANING UP
-    openretinawrapper.load_config()
-    openretinawrapper.load_tables()
-    openretinawrapper.clean_up(at_processing_stage="setup")
+    # # FOR CLEANING UP
+    # openretinawrapper.load_config()
+    # openretinawrapper.load_tables()
+    # openretinawrapper.clean_up(at_processing_stage="setup")
 
 
     # openretinawrapper.add_all_stimuli()
