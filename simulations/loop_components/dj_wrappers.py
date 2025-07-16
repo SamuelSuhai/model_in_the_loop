@@ -21,12 +21,15 @@ class OpenRetinaWrapper:
                  repo_directory: str,
                  dj_config_directory: str,
                  rgc_output_directory: str,
+                 data_subfolders: Dict[str, str],
                  
                  userinfo: dict,
-                
+
+                 table_parameters: dict,
+
                  sleep_time_between_table_ops: int  = 1,
                  debug: bool = False,
-                 plotting: dict = {},
+                 plot_results: bool = False,
 
                  ):
         """
@@ -35,28 +38,33 @@ class OpenRetinaWrapper:
         self.iteration: int = 0
         self.debug: bool = debug
         self.multiprocessing_threads: int = 20 if not debug else 1 # this is so I can go in with debugger wo problems othrewise get problems
-        self.plotting: dict = plotting
+        self.plot_results: bool  = plot_results
         self.sleep_time_between_table_ops: int = sleep_time_between_table_ops
         self.tables = {}
 
         # check who is running command
         self.username: str = username
 
+        self.table_parameters: dict = table_parameters
+
         # get home directory
         self.home_directory: str = home_directory
         self.config_file: str = os.path.join(self.home_directory,dj_config_directory, f'dj_{self.username}_conf.json')
         self.rgc_output_folder = os.path.join(home_directory, rgc_output_directory)
+        self.data_subfolders = data_subfolders
+
+        # get repo directory
+        self.repo_directory: str = repo_directory
 
         # information for UserInfo table
-        _data_dir = os.path.join(repo_directory, 'data','recordings','updated_loop_data')
-        self.userinfo: dict = {**userinfo,'data_dir': _data_dir}      
+        self.userinfo: dict = userinfo
         self.schema_name = f"ageuler_{self.username}_closed_loop"
 
         # some tests idk if necessary
         assert self.username == subprocess.check_output(["whoami"]).decode().strip()
         assert self.home_directory == os.path.expanduser("~")
         assert os.path.isfile(self.config_file), f'Set the path to your config file: {self.config_file}'
-        assert os.path.exists(_data_dir), f"Path to data dir does not exist: {_data_dir}"
+        assert os.path.exists(userinfo["data_dir"]), f"Path to data dir does not exist: {username["data_dir"]}"
         assert os.path.isdir(self.rgc_output_folder), f'Set path to output directory: {self.rgc_output_folder}'
   
     def __call__(self, table_name):
@@ -175,11 +183,11 @@ class OpenRetinaWrapper:
         sleep(self.sleep_time_between_table_ops)
 
         self('PreprocessParams')().add_default(
-            window_length=60,  # default
-            poly_order=3,  # default
-            non_negative=1,  # non default
-            subtract_baseline=0,  # non default
-            standardize=1,  # default
+            # window_length=60,  # default
+            # poly_order=3,  # default
+            # non_negative=1,  # non default
+            # subtract_baseline=0,  # non default
+            # standardize=1,  # default
         )
 
         # Celltype assignment
@@ -258,7 +266,7 @@ class OpenRetinaWrapper:
         sleep(self.sleep_time_between_table_ops)
 
         missing_fields = self('RoiMask')().list_missing_field()
-        assert len(missing_fields) > 0 , "no missing fields found"
+        assert len(missing_fields) == 1 , f"Expecting exatly no missing fields but found {len(missing_fields)}"
         field_key = missing_fields[0]
         sleep(self.sleep_time_between_table_ops)
 
@@ -274,6 +282,10 @@ class OpenRetinaWrapper:
         sleep(self.sleep_time_between_table_ops)
         self('Roi')().populate(processes=20, display_progress=True)
         sleep(self.sleep_time_between_table_ops)
+
+        if self.plot_results:
+            self('RoiMask')().plot1()
+            plt.gcf().savefig(os.path.join(self.repo_directory,"figures",f"roi_mask_{field_key}.png"), dpi=300, bbox_inches='tight')
 
     @time_it
     def add_iteration_traces(self) -> None:
@@ -329,7 +341,11 @@ class OpenRetinaWrapper:
         self('Stimulus')().add_nostim(skip_duplicates=True)
         self('Stimulus')().add_chirp(spatialextent=1000, stim_name='gChirp', alias="chirp_gchirp_globalchirp", skip_duplicates=True)
         self('Stimulus')().add_chirp(spatialextent=300, stim_name='lChirp', alias="lchirp_localchirp", skip_duplicates=True)
-        self('Stimulus')().add_noise(stim_name='noise', pix_n_x=20, pix_n_y=15, pix_scale_x_um=30, pix_scale_y_um=30, stim_trace=noise_stimulus, skip_duplicates=True)
+        self('Stimulus')().add_noise(stim_name='noise', pix_n_x=20, pix_n_y=15, 
+                                     pix_scale_x_um=self.table_parameters.Stimulus.noise.pix_scale_x_um, 
+                                     pix_scale_y_um=self.table_parameters.Stimulus.noise.pix_scale_y_um, 
+                                     stim_trace=noise_stimulus, skip_duplicates=True)
+        
         self('Stimulus')().add_movingbar(skip_duplicates=True)
         
         self('Stimulus')().add_stimulus(
@@ -348,7 +364,19 @@ class OpenRetinaWrapper:
 
         self('Baden16Traces')().populate(display_progress=True, processes=self.multiprocessing_threads)
         self('CelltypeAssignment')().populate(display_progress=True)
+        
+        if self.plot_results:
+            for threshold_confidence in [0, 0.25, 0.5]:
+                self('CelltypeAssignment')().plot(threshold_confidence=threshold_confidence)
+                plt.gcf().savefig(os.path.join(self.repo_directory,"figures",f"celltype_assignment_confidence_threshold_{threshold_confidence}.png"), dpi=300, bbox_inches='tight')
+                
+                # self('CelltypeAssignment')().plot_features(threshold_confidence= threshold_confidence)
+                # plt.gcf().savefig(os.path.join(self.repo_directory,"figures",f"celltype_assignment_features_confidence_threshold_{threshold_confidence}.png"), dpi=300, bbox_inches='tight')
+                
+                self('CelltypeAssignment')().plot_group_traces(threshold_confidence= threshold_confidence)
+                plt.gcf().savefig(os.path.join(self.repo_directory,"figures",f"celltype_assignment_traces_confidence_threshold_{threshold_confidence}.png"), dpi=300, bbox_inches='tight')
 
+            
         # if self.debug:
         #     self('CelltypeAssignment')().plot(threshold_confidence=0.0)
         #     self('CelltypeAssignment')().plot(threshold_confidence=0.25)
@@ -476,7 +504,8 @@ class OpenRetinaWrapper:
                 sleep(self.sleep_time_between_table_ops / 5)
             
             # check if there are ROIs dir in recording dir with Pre and Raw and delete it if so
-            roi_dir = os.path.join(self.userinfo['data_dir'], '20200226','1','ROIs')
+            
+            roi_dir = os.path.join(self.userinfo['data_dir'], str(self.data_subfolders["day"]),str(self.data_subfolders["experiment"]),'ROIs')
             if os.path.exists(roi_dir) and at_processing_stage != 'data_extraction':
                 print(f"Deleting ROIs directory: {roi_dir}")
                 user_ok = input(f"Are you sure you want to delete this directory? (y/n): ")

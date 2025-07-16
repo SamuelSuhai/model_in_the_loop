@@ -2,19 +2,52 @@ import os
 import shutil
 import glob 
 
-def copy_stim_files(repo_directory,stim_file,new_dir,iter_nr) -> None:
+
+def create_directory_structure(base_directory: str,date: int ,experiment: int,):
+    """Creates folder structure for DJ"""
+
+    for subfolder in ["Raw","Pre"]:
+        to_create = os.path.join(base_directory,str(date),str(experiment),subfolder)
+        os.makedirs(to_create, exist_ok=True)
+
+
+
+def copy_stim_files(recording_files_dir: str,destination_base: str, date: int, experiment: int) -> None:
     """
-    copy stimulus files from dir to new_dir
+    Copies all smp, smh and ini files from recording dir to a dir structure that one can use in DJ.
     """
-    for ending in ['.smp','.smh']:
-        source_path = os.path.join(repo_directory, 'data', 'recordings','static_test_data',stim_file + ending)
-        destination_path = os.path.join(new_dir, f"{stim_file}_iter{iter_nr}{ending}")
+    all_files_in_dir = os.listdir(recording_files_dir)
+
+    for filename in all_files_in_dir:
+
+        if not os.path.isfile(os.path.join(recording_files_dir, filename)):
+            continue
+
+
+        # Get the full source path when needed
+        source_file = os.path.join(recording_files_dir, filename)
         
-        if not os.path.exists(source_path):
-            raise FileNotFoundError(f"Source path {source_path} does not exist")
+
+        # Split filename and extension
+        name_parts = filename.split('.')
+        if len(name_parts) < 2:
+            continue  # Skip files without extensions
+            
+        stim_file, ending = name_parts[0], name_parts[1]
+     
         
-        shutil.copy(source_path, destination_path)
-        print(f"Copied noise file from {source_path} to {destination_path}")
+        # first deal with smp and smh files 
+        if ending in ["smp", "smh"]:
+            new_stim_file = stim_file + "_iter0" if not "iter" in stim_file else stim_file
+            new_path_full = os.path.join(destination_base, str(date), str(experiment), "Raw", new_stim_file + "." + ending)
+        elif ending == "ini":
+            new_path_full = os.path.join(destination_base,str(date), str(experiment),stim_file + "." + ending)
+        else:
+            raise ValueError(f"Unknown file ending {ending} for file {filename}")
+
+        # Copy the files with different endings
+        shutil.copy(source_file, new_path_full)
+        print(f"Copied file from {source_file} to {new_path_full}")
 
 
 
