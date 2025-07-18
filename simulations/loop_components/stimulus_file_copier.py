@@ -1,6 +1,7 @@
 import os 
 import shutil
 import glob 
+from typing import List, Optional   
 
 
 def create_directory_structure(base_directory: str,date: int ,experiment: int,):
@@ -12,13 +13,38 @@ def create_directory_structure(base_directory: str,date: int ,experiment: int,):
 
 
 
-def copy_stim_files(recording_files_dir: str,destination_base: str, date: int, experiment: int) -> None:
+def copy_stim_files(recording_files_dir: str,
+                    destination_base: str, 
+                    date: int, 
+                    experiment: int,
+                    permissible_stimulus_types: List[str] = ["chirp","dn","mb","mc"],
+                    dummy_ini_path: Optional[str] = None,
+                    ) -> None:
     """
     Copies all smp, smh and ini files from recording dir to a dir structure that one can use in DJ.
     """
     all_files_in_dir = os.listdir(recording_files_dir)
 
+
+    # filter files
+    filtered_files_in_dir = []
     for filename in all_files_in_dir:
+
+        # wrong ending 
+        if not filename.endswith(('.smp', '.smh', '.ini')):
+            continue
+        
+        # Check if the file is a permissible stimulus type
+        file_info_list = filename.split('.')[0].split('_')
+        file_info_list = [info.lower() for info in file_info_list]  # Normalize to lowercase
+        if not any(stimulus_type in file_info_list for stimulus_type in permissible_stimulus_types):
+            continue
+
+        filtered_files_in_dir.append(filename)
+
+    
+
+    for filename in filtered_files_in_dir:
 
         if not os.path.isfile(os.path.join(recording_files_dir, filename)):
             continue
@@ -44,12 +70,29 @@ def copy_stim_files(recording_files_dir: str,destination_base: str, date: int, e
             new_path_full = os.path.join(destination_base,str(date), str(experiment),stim_file + "." + ending)
         else:
             raise ValueError(f"Unknown file ending {ending} for file {filename}")
+        
+        # check if file already exists
+        if os.path.exists(new_path_full):
+            print(f"File {new_path_full} already exists, skipping.")
+            continue
 
         # Copy the files with different endings
         shutil.copy(source_file, new_path_full)
         print(f"Copied file from {source_file} to {new_path_full}")
+    
+
+    # deal with the case of missing ini file
+    has_ini_file = any(file.endswith('.ini') for file in filtered_files_in_dir)
+    
+    if not has_ini_file:
+        # copy dummy ini file
+        if dummy_ini_path is None:
+            raise ValueError("dummy_ini_path must be provided if no ini file is found")
 
 
+        dummy_ini_dest = os.path.join(destination_base, str(date), str(experiment), os.path.basename(dummy_ini_path))
+        shutil.copy(dummy_ini_path, dummy_ini_dest)
+        print(f"Copied dummy ini file from {dummy_ini_path} to {dummy_ini_dest}")
 
 class StimulusFileCopier:
 

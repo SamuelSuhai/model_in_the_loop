@@ -56,14 +56,14 @@ def create_loop_components(
 def run_simulation(cfg: DictConfig) -> None:
 
 
-    create_directory_structure(cfg.DJ.userinfo.data_dir, cfg.data_subfolders.day, cfg.data_subfolders.experiment)
-    print("Copying recording files to repo ... ")
-    copy_stim_files(
-        recording_files_dir=cfg.paths.recording_files_dir,  # type: ignore
-        destination_base=cfg.DJ.userinfo.data_dir,  # type: ignore
-        date=cfg.data_subfolders.day,  # type: ignore
-        experiment=cfg.data_subfolders.experiment,  # type: ignore
-    )
+    # create_directory_structure(cfg.DJ.userinfo.data_dir, cfg.data_subfolders.day, cfg.data_subfolders.experiment)
+    # print("Copying recording files to repo ... ")
+    # copy_stim_files(
+    #     recording_files_dir=cfg.paths.recording_files_dir,  # type: ignore
+    #     destination_base=cfg.DJ.userinfo.data_dir,  # type: ignore
+    #     date=cfg.data_subfolders.day,  # type: ignore
+    #     experiment=cfg.data_subfolders.experiment,  # type: ignore
+    # )
 
 
     # ## The entire iteration

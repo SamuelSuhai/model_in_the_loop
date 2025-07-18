@@ -182,13 +182,10 @@ class OpenRetinaWrapper:
             ))
         sleep(self.sleep_time_between_table_ops)
 
-        self('PreprocessParams')().add_default(
-            # window_length=60,  # default
-            # poly_order=3,  # default
-            # non_negative=1,  # non default
-            # subtract_baseline=0,  # non default
-            # standardize=1,  # default
-        )
+        preprocess_params =self.table_parameters.get("PreprocessParams", {})
+        self('PreprocessParams')().add_default(**preprocess_params)
+   
+        
 
         # Celltype assignment
         self('ClassifierTrainingData')().add_default(skip_duplicates=True)
@@ -196,7 +193,10 @@ class OpenRetinaWrapper:
         self('Classifier')().populate()
 
         # rf estimation 
-        self('DNoiseTraceParams')().add_default()
+        dense_noise_parmas = self.table_parameters.get("DNoiseTraceParams", {})
+        self('DNoiseTraceParams')().add_default(**dense_noise_parmas)
+
+
         self('STAParams')().add_default()
 
 
@@ -242,17 +242,17 @@ class OpenRetinaWrapper:
             self('Experiment')().rescan_filesystem(verboselvl=3)
             sleep(self.sleep_time_between_table_ops)
             
-            self('OpticDisk')().populate(processes=20, display_progress=True)
+            self('OpticDisk')().populate(processes=self.multiprocessing_threads, display_progress=True)
 
 
 
         self('Field')().rescan_filesystem(verboselvl=3)
         sleep(self.sleep_time_between_table_ops)
 
-        self('RelativeFieldLocation')().populate(processes=20, display_progress=True)
+        self('RelativeFieldLocation')().populate(processes=self.multiprocessing_threads, display_progress=True)
         sleep(self.sleep_time_between_table_ops)
 
-        self('Presentation')().populate(processes=20, display_progress=True)
+        self('Presentation')().populate(processes=self.multiprocessing_threads, display_progress=True)
         sleep(self.sleep_time_between_table_ops)
  
         
@@ -274,13 +274,14 @@ class OpenRetinaWrapper:
         roi_canvas = self('RoiMask')().draw_roi_mask(field_key=field_key, canvas_width=30)
         
         #TODO : REALLY UNSURE IF THIS DOES WHAT I WANT 
+        # roi_canvas.exec_autorois_all_stacks()
         roi_canvas.exec_autorois_all()
         roi_canvas.exec_save_to_file()
 
         # add to database
         roi_canvas.insert_database(roi_mask_tab=self('RoiMask'), field_key=field_key)
         sleep(self.sleep_time_between_table_ops)
-        self('Roi')().populate(processes=20, display_progress=True)
+        self('Roi')().populate(processes=self.multiprocessing_threads, display_progress=True)
         sleep(self.sleep_time_between_table_ops)
 
         if self.plot_results:
@@ -291,10 +292,10 @@ class OpenRetinaWrapper:
     def add_iteration_traces(self) -> None:
         
 
-        self('Traces')().populate(processes=20, display_progress=True)
+        self('Traces')().populate(processes=self.multiprocessing_threads, display_progress=True)
         sleep(self.sleep_time_between_table_ops)
 
-        self('PreprocessTraces')().populate(processes=20, display_progress=True)
+        self('PreprocessTraces')().populate(processes=self.multiprocessing_threads, display_progress=True)
         sleep(self.sleep_time_between_table_ops)
 
 
@@ -302,10 +303,10 @@ class OpenRetinaWrapper:
     def add_trace_reformatting(self) -> None:
         
         
-        self('Snippets')().populate(processes=20, display_progress=True)
+        self('Snippets')().populate(processes=self.multiprocessing_threads, display_progress=True)
         
         sleep(self.sleep_time_between_table_ops)
-        self('Averages')().populate(processes=20, display_progress=True)
+        self('Averages')().populate(processes=self.multiprocessing_threads, display_progress=True)
 
     @time_it
     def add_quality_metrics(self) -> None:
@@ -316,7 +317,7 @@ class OpenRetinaWrapper:
     @time_it
     def add_sta(self) -> None:
 
-        self('DNoiseTrace')().populate(processes=20, display_progress=True)
+        self('DNoiseTrace')().populate(processes=self.multiprocessing_threads, display_progress=True)
         sleep(self.sleep_time_between_table_ops)
 
         self('STA')().populate(processes=self.multiprocessing_threads, display_progress=True)
@@ -337,14 +338,18 @@ class OpenRetinaWrapper:
 
         with h5py.File("/gpfs01/euler/data/Resources/Stimulus/noise.h5", "r") as f:
             noise_stimulus = f['stimulusarray'][:].T.astype(int)
+        noise_stimulus = noise_stimulus*2-1
+        
         
         self('Stimulus')().add_nostim(skip_duplicates=True)
         self('Stimulus')().add_chirp(spatialextent=1000, stim_name='gChirp', alias="chirp_gchirp_globalchirp", skip_duplicates=True)
         self('Stimulus')().add_chirp(spatialextent=300, stim_name='lChirp', alias="lchirp_localchirp", skip_duplicates=True)
-        self('Stimulus')().add_noise(stim_name='noise', pix_n_x=20, pix_n_y=15, 
-                                     pix_scale_x_um=self.table_parameters.Stimulus.noise.pix_scale_x_um, 
-                                     pix_scale_y_um=self.table_parameters.Stimulus.noise.pix_scale_y_um, 
-                                     stim_trace=noise_stimulus, skip_duplicates=True)
+
+        
+        self('Stimulus')().add_noise(**self.table_parameters.Stimulus.noise, stim_trace=noise_stimulus,)
+        
+        # self('Stimulus')().update1(dict(stim_name='densnoise',stim_family='noise', 
+        #               stim_dict=dict( pix_scale_x_um=40, pix_scale_y_um=40, pix_n_x=20, pix_n_y=15, framerate = 5)))
         
         self('Stimulus')().add_movingbar(skip_duplicates=True)
         
@@ -385,7 +390,7 @@ class OpenRetinaWrapper:
     @time_it
     def add_peak_sta_positions(self) -> None:
 
-        self('PeakSTAPosition')().populate(processes=20, display_progress=True)
+        self('PeakSTAPosition')().populate(processes=self.multiprocessing_threads, display_progress=True)
         sleep(self.sleep_time_between_table_ops)
 
        
