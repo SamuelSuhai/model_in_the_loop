@@ -102,6 +102,8 @@ class VisualizationGUI(PipelineGUIBase):
         field_table = self.wrapper('Field')()
         userinfo_table = self.wrapper('UserInfo')()
 
+        key = dict(stim_name="movingbar")
+
         key = get_primary_key(table=roi_mask_table.proj() * presentation_table.proj(), key=key)
         npixartifact, scan_type = (field_table & key).fetch1('npixartifact', 'scan_type')
         data_name, alt_name = (userinfo_table & key).fetch1('data_stack_name', 'alt_stack_name')
@@ -159,7 +161,8 @@ class VisualizationGUI(PipelineGUIBase):
                 scan_type=self.field_data['scan_type'],
                 npixartifact=self.field_data['npixartifact'],
                 highlight_roi= [self.selected_roi],
-                figsize=(8, 6)
+                figsize=(8, 6),
+        
             )
             
             # Add title with instructions

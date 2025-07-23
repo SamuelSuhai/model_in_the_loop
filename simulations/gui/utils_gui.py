@@ -6,7 +6,7 @@ from djimaging.utils.math_utils import normalize_zero_one
 
 
 def plot_stack_and_rois(main_ch_average, scan_type='xy', roi_mask=None, roi_ch_average=None, npixartifact=0,
-               title='', figsize=(6, 4), highlight_roi=[], fig=None, ax=None, gamma=1.) -> Tuple[plt.Figure, plt.Axes]:
+               title='', figsize=(6, 4), highlight_roi=[], fig=None, ax=None, gamma=0.5) -> Tuple[plt.Figure, plt.Axes]:
     if roi_mask is None or roi_mask.size == 0:
         raise ValueError("roi_mask is required for this simplified plot function")
 
