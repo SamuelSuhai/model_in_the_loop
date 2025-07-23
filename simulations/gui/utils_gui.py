@@ -5,7 +5,7 @@ from typing import Optional, Union, Tuple
 from djimaging.utils.math_utils import normalize_zero_one
 
 
-def plot_stack_and_rois(main_ch_average, alt_ch_average, scan_type='xy', roi_mask=None, roi_ch_average=None, npixartifact=0,
+def plot_stack_and_rois(main_ch_average, scan_type='xy', roi_mask=None, roi_ch_average=None, npixartifact=0,
                title='', figsize=(6, 4), highlight_roi=[], fig=None, ax=None, gamma=1.) -> Tuple[plt.Figure, plt.Axes]:
     if roi_mask is None or roi_mask.size == 0:
         raise ValueError("roi_mask is required for this simplified plot function")
@@ -15,6 +15,7 @@ def plot_stack_and_rois(main_ch_average, alt_ch_average, scan_type='xy', roi_mas
 
     # normalize and gamma correction
     roi_ch_average = normalize_zero_one(roi_ch_average) ** gamma
+    main_ch_average = normalize_zero_one(main_ch_average) ** gamma
 
     if (fig is None) or (ax is None):
         fig, ax = plt.subplots(1, 1, figsize=figsize)
@@ -39,22 +40,44 @@ def plot_stack_and_rois(main_ch_average, alt_ch_average, scan_type='xy', roi_mas
 
     ax.imshow(_roi_ch_average.T, cmap='viridis', origin='lower', extent=extent)
     rois_us = np.repeat(np.repeat(rois, 10, axis=0), 10, axis=1)
-    vmin = np.min(rois)
-    vmax = np.max(rois)
-
 
     rois_to_plot = np.unique(rois[rois > 0])
 
     
+    # roi_us_bool = rois_us > 0
+    # ax.contour(rois_us, extent=extent, levels= list(rois_to_plot), alpha=0.8, cmap= 'jet', linewidths=0.5)
+
+    # # plot filled special one
+    # ax.contourf(rois_us == highlight_roi, extent=extent, levels=[1 - 1e-3, 1 + 1e-3], alpha=0.3, colors='red')
 
     for roi in rois_to_plot:
-        _rois_us = (rois_us == roi).astype(int) * roi
+        bool_mask = rois_us == roi
+        _rois_us = bool_mask.astype(int) 
 
         if roi in highlight_roi:
-            print(f"Highlighting ROI {roi}")
-            ax.imshow(_rois_us, extent=extent, vmin=vmin, vmax=vmax, alpha=0.5, cmap='jet')
+            color = 'red'
         else:
-            ax.contour(_rois_us, extent=extent, vmin=vmin, vmax=vmax, levels=[roi - 1e-3], alpha=0.8, cmap='jet')
+            color = 'blue'
+
+        ax.contour(_rois_us, extent=extent, levels=[1 - 1e-3], alpha=0.8, colors=color)
+        
+        y_coords, x_coords = np.where(bool_mask)
+        
+        if len(y_coords) > 0 and len(x_coords) > 0:
+            # Calculate center in upsampled coordinates
+            center_y = np.mean(y_coords)
+            center_x = np.mean(x_coords)
+            
+            # Convert to plot coordinates using the extent
+            x_plot = extent[0] + (extent[1] - extent[0]) * center_x / _rois_us.shape[1]
+            y_plot = extent[2] + (extent[3] - extent[2]) * center_y / _rois_us.shape[0]
+            
+            # Add text with ROI ID at the center
+            ax.text(x_plot, y_plot, f"{int(roi)}", 
+                   ha='center', va='center', color="white", fontweight='bold', fontsize=8,
+                   )#bbox=dict(facecolor=color, alpha=0.2, pad=1, boxstyle='round'))
+
+
 
     plt.tight_layout()
     return fig, ax

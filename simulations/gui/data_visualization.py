@@ -45,8 +45,7 @@ class VisualizationGUI(PipelineGUIBase):
         self.outputs['quality_text'] = widgets.Output()
         self.outputs['celltype_text'] = widgets.Output()
         self.outputs['chirp_plot'] = widgets.Output()
-        self.outputs['temporal_sta'] = widgets.Output()
-        self.outputs['spatial_sta'] = widgets.Output()
+        self.outputs['sta'] = widgets.Output()
         
         # Button to refresh/update visualization
         self.widgets['refresh'] = widgets.Button(
@@ -150,12 +149,11 @@ class VisualizationGUI(PipelineGUIBase):
     def update_roi_visualization(self):
         """Update the ROI mask visualization"""
         with self.outputs['roi_plot']:
-            self.outputs['roi_plot'].clear_output(wait=True)
+            self.outputs['roi_plot'].clear_output(wait=False)
             
             
             self.current_fig, ax = plot_stack_and_rois(
                 main_ch_average=self.field_data['main_ch_average'],
-                alt_ch_average=self.field_data['alt_ch_average'],
                 roi_mask=self.roi_data['roi_mask'],
                 roi_ch_average=self.field_data['main_ch_average'],
                 scan_type=self.field_data['scan_type'],
@@ -245,13 +243,13 @@ class VisualizationGUI(PipelineGUIBase):
         self.update_quality_indices()
         self.update_celltype_info()
         self.update_chirp_traces()
-        self.update_temporal_sta()
-        self.update_spatial_sta()
+        self.update_sta()
+        
     
     def update_quality_indices(self):
         """Update quality indices text panel"""
         with self.outputs['quality_text']:
-            self.outputs['quality_text'].clear_output(wait=True)
+            self.outputs['quality_text'].clear_output(wait=False)
 
             
             quality_data = self.get_quality_data(self.selected_roi)
@@ -259,11 +257,13 @@ class VisualizationGUI(PipelineGUIBase):
             quality_text = "" 
             for key, value in quality_data.items():
                 quality_text += f"{key}: {value:.2f}\n"
+            
+            print(quality_text)
 
     def update_celltype_info(self):
         """Update cell type information panel"""
         with self.outputs['celltype_text']:
-            self.outputs['celltype_text'].clear_output(wait=True)
+            self.outputs['celltype_text'].clear_output(wait=False)
 
                 
             cell_type_data: Dict[str, np.ndarray] = self.get_celltype_data(self.selected_roi)
@@ -277,26 +277,31 @@ class VisualizationGUI(PipelineGUIBase):
     def update_chirp_traces(self):
         """Update chirp traces plot"""
         with self.outputs['chirp_plot']:
-            self.outputs['chirp_plot'].clear_output(wait=True)
+            self.outputs['chirp_plot'].clear_output(wait=False)
            
-            chirp_data = self.get_chirp_data(self.selected_roi)
+            # use plot from database 
+            self.wrapper('Averages')().plot1(key=dict(stim_name="gChirp", roi_id=self.selected_roi))
 
-    
-    def update_temporal_sta(self):
-        """Update temporal STA plot"""
-        with self.outputs['temporal_sta']:
-            self.outputs['temporal_sta'].clear_output(wait=True)
-            
-          
-            temporal_sta_data = self.get_temporal_sta_data(self.selected_roi)
-               
-    
-    def update_spatial_sta(self):
-        """Update spatial STA plot"""
-        with self.outputs['spatial_sta']:
-            self.outputs['spatial_sta'].clear_output(wait=True)
-           
-            spatial_sta_data = self.get_spatial_sta_data(self.selected_roi)
+
+    def update_sta(self):
+        """Update the sta plot, one ax has temporal and one spatial"""
+        with self.outputs['sta']:
+            self.outputs['sta'].clear_output(wait=False)
+
+            # Get the STA data
+            frame_with_peak, mean_temp_trace = self.get_sta_data(self.selected_roi)
+            # Plot temporal STA
+            fig, axs = plt.subplots(2, 1, figsize=(10, 6))
+            axs[0].plot(mean_temp_trace, label='Mean Temporal Trace')
+            axs[0].set(title='Mean temporal trace', xlabel='Time (frames)', ylabel='Amplitude')
+            axs[0].legend()
+
+            # Plot spatial STA
+            axs[1].imshow(frame_with_peak.T, aspect='auto',)
+            axs[1].set(title='Frame with peak', xlabel='X (pixels)', ylabel='Y (pixels)')
+            plt.tight_layout()
+            plt.show()
+
             
     def get_quality_data(self, roi_id):
         """Get quality indices for a specific ROI"""
@@ -327,21 +332,20 @@ class VisualizationGUI(PipelineGUIBase):
         assert celltype_data["celltype"] == top_3_groups[0], "Top group does not match celltype assignment"
 
         return {"top_3_groups": top_3_groups, "top_3_scores": top_3_scores}
-        
-    def get_chirp_data(self, roi_id):
-        """Get chirp response data for a specific ROI"""
-        
-        return None
-    
-    def get_temporal_sta_data(self, roi_id):
-        """Get temporal STA data for a specific ROI"""
 
-        return None
+  
     
-    def get_spatial_sta_data(self, roi_id):
-        """Get spatial STA data for a specific ROI"""
+     
+    def get_sta_data(self, roi_id: int):
+        """Update temporal and spatial STA data"""
+        rf = (self.wrapper("STA")() & dict(roi_id=roi_id)).fetch1("rf")
 
-        return None
+        temp_idx_of_peak = np.argmax(np.max(np.abs(rf), axis=(1, 2)), axis=0)
+        frame_with_peak = rf[temp_idx_of_peak, :, :]
+        mean_temp_trace = np.mean(np.abs(rf), axis=(1, 2))
+
+        
+        return frame_with_peak, mean_temp_trace
     
     def create_layout(self):
         """Create the main layout for the visualization GUI"""
@@ -357,8 +361,13 @@ class VisualizationGUI(PipelineGUIBase):
         # Left side: ROI visualization (larger)
         left_panel = widgets.VBox([
             widgets.HTML("<h3>ROI Visualization</h3>"),
-            self.outputs['roi_plot']
-        ])
+            self.outputs['roi_plot'],
+            ],
+            layout = widgets.Layout(
+                width='50%',  # Fixed width for the right panel
+                overflow='auto'  # Enable scrolling if content overflows
+            ))
+        
         
         # Right side: ROI information panels
         # Top row: Quality indices and cell types
@@ -383,12 +392,8 @@ class VisualizationGUI(PipelineGUIBase):
         info_bottom = widgets.HBox([
             widgets.VBox([
                 widgets.HTML("<h4>Temporal STA</h4>"),
-                self.outputs['temporal_sta']
+                self.outputs['sta']
             ]),
-            widgets.VBox([
-                widgets.HTML("<h4>Spatial STA</h4>"),
-                self.outputs['spatial_sta']
-            ])
         ])
         
         # Right panel combining all info panels
@@ -396,8 +401,12 @@ class VisualizationGUI(PipelineGUIBase):
             info_top,
             info_middle,
             info_bottom
-        ])
-        
+            ],
+            layout = widgets.Layout(
+                width='50%',  # Fixed width for the right panel
+                overflow='auto'  # Enable scrolling if content overflows
+            ))
+
         # Main layout with better proportions for click interaction
         main_content = widgets.HBox([
             left_panel,
