@@ -89,7 +89,8 @@ class OpenRetinaWrapper:
                 ClassifierMethod, ClassifierTrainingData, Classifier,
                 Baden16Traces, CelltypeAssignment,
                 CascadeTraceParams, CascadeParams, CascadeTraces, CascadeSpikes,
-                DNoiseTraceParams,DNoiseTrace,STAParams,STA,
+                # RF
+                DNoiseTraceParams,DNoiseTrace,STAParams,STA, SplitRFParams,SplitRF,
                 PeakSTAPosition,
                 OpenRetinaHoeflingFormat, schema,
             )
@@ -124,11 +125,19 @@ class OpenRetinaWrapper:
             'CascadeParams': CascadeParams,
             'CascadeTraces': CascadeTraces,
             'CascadeSpikes': CascadeSpikes,
+            
+            # RF 
             'DNoiseTraceParams': DNoiseTraceParams,
             'DNoiseTrace': DNoiseTrace,
             'STAParams': STAParams,
             'STA': STA,
+            'SplitRFParams': SplitRFParams,
+            'SplitRF': SplitRF,
             'PeakSTAPosition': PeakSTAPosition,
+
+            
+
+            # OpenRetina
             'OpenRetinaHoeflingFormat': OpenRetinaHoeflingFormat
         }
 
@@ -198,6 +207,8 @@ class OpenRetinaWrapper:
 
 
         self('STAParams')().add_default()
+        self('SplitRFParams')().add_default()
+
 
 
         # spike estimation
@@ -401,7 +412,78 @@ class OpenRetinaWrapper:
         session_dict = self('OpenRetinaHoeflingFormat')().extract_data()
         return session_dict
 
+    
 
+    def compute_quality_and_type(self, compute_or_delete = "compute") -> None:
+
+        if compute_or_delete == "compute":
+
+            # check if rois have been extracted
+            if len(self('Roi')()) == 0:
+                self('Roi')().populate(processes=self.multiprocessing_threads, display_progress=True)
+            
+            # check if traces tables are populated 
+            if len(self('PreprocessTraces')()) == 0:
+                self('Traces')().populate(processes=self.multiprocessing_threads, display_progress=True)
+                sleep(self.sleep_time_between_table_ops)
+
+                self('PreprocessTraces')().populate(processes=self.multiprocessing_threads, display_progress=True)
+                sleep(self.sleep_time_between_table_ops)
+
+            # check if snipptes table is provided
+            if len(self('Snippets')()) == 0:
+                self('Snippets')().populate(processes=self.multiprocessing_threads, display_progress=True)
+                sleep(self.sleep_time_between_table_ops)
+                self('Averages')().populate(processes=self.multiprocessing_threads, display_progress=True)
+
+            # add the quality metrics and type assignments
+            self('ChirpQI')().populate(display_progress=True, processes=self.multiprocessing_threads)
+            self('OsDsIndexes')().populate(display_progress=True, processes=self.multiprocessing_threads)
+
+            # add type assignments
+            self('Baden16Traces')().populate(display_progress=True, processes=self.multiprocessing_threads)
+            self('CelltypeAssignment')().populate(display_progress=True)
+   
+            
+        elif compute_or_delete == "delete":
+            # delete the quality metrics and type assignments
+            self('ChirpQI')().delete()
+            self('OsDsIndexes')().delete()
+
+            # delete type assignments
+            self('Baden16Traces')().delete()
+            self('CelltypeAssignment')().delete()
+
+        else:
+            raise ValueError("compute_or_delete must be either 'compute' or 'delete'")
+
+    def compute_sta(self, compute_or_delete = "compute") -> None:
+        
+        if compute_or_delete == "compute":
+            # add DN traces
+            self('DNoiseTrace')().populate(processes=self.multiprocessing_threads, display_progress=True)
+            sleep(self.sleep_time_between_table_ops)
+
+            # add STA traces
+            self('STA')().populate(processes=self.multiprocessing_threads, display_progress=True)
+            sleep(self.sleep_time_between_table_ops)
+
+            # Split RF
+            self('SplitRF')().populate(processes=self.multiprocessing_threads, display_progress=True)
+
+        elif compute_or_delete == "delete":
+            # delete DN traces
+            self('DNoiseTrace')().delete()
+            sleep(self.sleep_time_between_table_ops)
+
+            # delete STA traces
+            self('STA')().delete()
+            sleep(self.sleep_time_between_table_ops)
+
+            # delete Split RF
+            self('SplitRF')().delete()
+        else:
+            raise ValueError("compute_or_delete must be either 'compute' or 'delete'")            
 
     def process_iteration_data(self,) -> Dict[str,Dict[str, Any]] | None:
         """
@@ -413,10 +495,10 @@ class OpenRetinaWrapper:
         
         self.upload_iteration_metadata()
         self.add_iteration_rois()
+
         self.add_iteration_traces()
-
-
         self.add_trace_reformatting()
+
         self.add_quality_metrics()
         self.add_celltype_assignments()
 

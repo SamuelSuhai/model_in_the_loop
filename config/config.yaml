@@ -61,7 +61,7 @@ paths:
   recording_files_dir: /gpfs01/euler/data/Data/Suhai/move_closed_loop_data_here
 
 
-debug: True
+debug: False
 plot_results: True
 clean_up_before: True
 clean_up_after: False

@@ -377,6 +377,7 @@ class InteractiveRoiCanvas(RoiCanvasData):
 
         # get infor from dj_wrapper
         wrapper_info = get_roi_canvas_data_from_wrapper(dj_wrapper,field_key,pres_key,)
+        self.wrapper = dj_wrapper
 
         super().__init__(ch0_stacks=wrapper_info['ch0_stacks'],
                          ch1_stacks=wrapper_info['ch1_stacks'],
@@ -395,8 +396,9 @@ class InteractiveRoiCanvas(RoiCanvasData):
 
         # roi mask table for inserting later
         self.roi_mask_table = wrapper_info['roi_mask_table']
+        self.roi_table = self.wrapper('Roi')
 
-        self.debug_mode = True
+        self.debug_mode = False
 
         # Pause all drawing
         self.draw_updates = False
@@ -405,10 +407,26 @@ class InteractiveRoiCanvas(RoiCanvasData):
         self.max_shift = max_shift
         self.canvas_width = canvas_width
 
+        # view mode for switching between analysis and roi editing
+                # Create mode selector
+        self.widget_change_mode = self.create_widget_change_mode()
+        self._selected_mode = 'ROI Editor'
+
+        # a container for all the widgets and canvases
+        self.container = VBox()
+
+        self.analysis_plot = Output()
+
+        # analysis mode widgets
+        self.widget_analysis_type = self.create_widget_analysis_type()
+        self._selected_analysis_type = 'Quality and Type'
+        self.widget_compute_analysis = self.create_widget_compute_analysis()
+
         # Create output widget
         self.log_messages = []
         self.log_counter = 0
         self.log_widget = Output()
+
 
         # Create menu elements
         self.current_traces = np.array([])
@@ -508,41 +526,139 @@ class InteractiveRoiCanvas(RoiCanvasData):
             for message in self.log_messages:
                 print(message)
 
+
+    def create_widget_compute_analysis(self):
+        """Create and return a button for computing the analysis"""
+        widget = Button(description='Compute Analysis', layout=Layout(width='200px'))
+
+
+
+        widget.on_click(self.compute_analysis)
+        return widget
+    
+    def compute_analysis(self,button=None):
+        """execute the functions of the wrapper to compute the analysis"""
+        self.log(f"computing analysis: {self._selected_analysis_type}")
+        
+        if self._selected_analysis_type == 'Quality and Type':
+            self.wrapper.compute_quality_and_type(compute_or_delete='compute',)    
+        
+        elif self._selected_analysis_type == 'STA':
+            self.wrapper.compute_sta(compute_or_delete='compute',)
+
+        elif self._selected_analysis_type == 'MEI':
+            pass
+        else:
+            print(f"Unknown analysis type: {self._selected_analysis_type}")
+
+        # refresh the analysis plot
+        self.update_analysis_plot()
+
+
+
+    def create_widget_analysis_type(self):
+        """Create and return a dropdown widget for selecting the analysis type"""
+        
+        options = ['Quality and Type', 'STA', 'MEI']
+        widget = Dropdown(options=options, 
+                          value=options[0], 
+                          description='Analysis Type:',
+                          layout=Layout(width='200px'))
+
+
+
+        widget.observe(self.on_analysis_type_change, names='value')
+        return widget
+
+    def create_widget_change_mode(self):
+        change_mode_widget = Dropdown(
+            options=['ROI Editor', 'Analysis View'],
+            value='ROI Editor',
+            description='Change Mode:',
+            layout=Layout(width='200px')
+        )
+        change_mode_widget.observe(self.on_mode_change, names='value')
+        return change_mode_widget
+
     def create_widget_canvas(self):
         widget = MultiCanvas(n_canvases=4, width=self.npx, height=self.npy)
         widget.layout.width = '100%'
         widget.layout.height = 'auto'
         widget.sync_image_data = True
         return widget
+    
+    def create_roi_tool_layout(self):
 
-    def start_gui(self):
-        w_outputs = VBox((self.img, self.widget_info), layout=Layout(width=f'{self.canvas_width}%'))
 
         w_tools = VBox((
-            HBox((self.widget_read_only, self.widget_dangerzone,)),
-            HBox((self.widget_exec_autorois, self.widget_exec_autorois_missing,
-                  self.widget_exec_autorois_all_stacks, self.widget_sel_autorois)),
-            HBox((self.widget_stim_prev, self.widget_stim_next, self.widget_sel_stim)),
-            HBox((self.widget_roi_prev, self.widget_roi_next, self.widget_roi)),
-            HBox((self.widget_save_and_new, self.widget_save, self.widget_undo, self.widget_kill_roi)),
-            HBox((self.widget_tool, self.widget_size, self.widget_thresh)),
-            HBox((self.widget_view, self.widget_alpha_bg, self.widget_alpha_hl, self.widget_alpha_ft)),
-            HBox((self.widget_bg, self.widget_gamma, self.widget_cmap)),
-            HBox((self.widget_auto_shift, self.widget_shift_dx, self.widget_shift_dy)),
-            self.widget_progress,
-        ), layout=Layout(width=f'{100 - self.canvas_width}%'))
+                HBox((self.widget_read_only, self.widget_dangerzone,)),
+                HBox((self.widget_exec_autorois, self.widget_exec_autorois_missing,
+                    self.widget_exec_autorois_all_stacks, self.widget_sel_autorois)),
+                HBox((self.widget_stim_prev, self.widget_stim_next, self.widget_sel_stim)),
+                HBox((self.widget_roi_prev, self.widget_roi_next, self.widget_roi)),
+                HBox((self.widget_save_and_new, self.widget_save, self.widget_undo, self.widget_kill_roi)),
+                HBox((self.widget_tool, self.widget_size, self.widget_thresh)),
+                HBox((self.widget_view, self.widget_alpha_bg, self.widget_alpha_hl, self.widget_alpha_ft)),
+                HBox((self.widget_bg, self.widget_gamma, self.widget_cmap)),
+                HBox((self.widget_auto_shift, self.widget_shift_dx, self.widget_shift_dy)),
+                self.widget_progress,
+            ), layout=Layout(width=f'{100 - self.canvas_width}%'))
 
         w_other_tools = VBox((
-            HBox((self.widget_clean, self.widget_save_all_to_file, self.widget_save_to_file, self.widget_insert_database)),
-            self.widget_save_info,
-            HBox((self.widget_kill_all, self.widget_reset_all, self.widget_delete_database)),
-        ))
+                HBox((self.widget_clean, self.widget_save_all_to_file, self.widget_save_to_file, self.widget_insert_database)),
+                self.widget_save_info,
+                HBox((self.widget_kill_all, self.widget_reset_all, self.widget_delete_database)),
+            ))
 
-        w_main = VBox((HBox((w_outputs, VBox((w_tools, self.log_widget)))),
-                       HBox((self.widget_show_diagnostics, self.widget_pause_draw)),
-                       self.widget_diagnostics, w_other_tools))
+        all_tool_widgets = VBox([w_tools, self.log_widget,
+                                 HBox((self.widget_show_diagnostics, self.widget_pause_draw)),
+                                 self.widget_diagnostics, w_other_tools])
 
-        return w_main
+        return all_tool_widgets
+
+    def create_analysis_layout(self):
+
+        # Analysis output widget for displaying plots
+        if not hasattr(self, 'analysis_plot'):
+            self.analysis_plot = Output()
+        
+        # Analysis controls panel
+        controls = HBox([
+            HTML("<h3>Analysis Controls</h3>"),
+            self.widget_analysis_type,
+            self.widget_compute_analysis,
+        ])
+        
+        # Analysis display area
+        plots = VBox([
+            self.analysis_plot
+        ])
+        
+        # Return the complete layout
+        return VBox([controls, plots,self.log_widget])
+
+    def start_gui(self):
+        
+        persistent_header = VBox([
+            self.widget_change_mode,
+            self.img,
+            self.widget_info
+        ], layout=Layout(width=f'{self.canvas_width}%'))
+
+    
+        if self._selected_mode == 'ROI Editor':
+            dynamic_content = self.create_roi_tool_layout()
+
+        else:
+            dynamic_content = self.create_analysis_layout()
+
+
+        self.container = HBox([
+            persistent_header,
+            dynamic_content,
+        ])
+        
+        return self.container
 
     def set_selected_cmap(self, value):
         self.widget_cmap.value = value
@@ -1324,6 +1440,112 @@ class InteractiveRoiCanvas(RoiCanvasData):
             if self.roi_masks[ix, iy] > 0:
                 self.set_selected_roi(self.roi_masks[ix, iy])
 
+                # update analysis plots if in mode
+                if self._selected_mode == 'Analysis View':
+                    self.update_analysis_plot()
+
+    def on_mode_change(self, value):
+        """React to mode change, e.g. by drawing on canvas"""
+        if self._selected_mode != value['new']:
+            self.log(f'Mode changed to {value['new']}')
+            self._selected_mode = value['new']
+            
+            # Build new content
+            persistent_header = VBox([
+                self.widget_change_mode,
+                self.img,
+                self.widget_info
+                ], layout=Layout(width=f'{self.canvas_width}%'))
+                
+            if self._selected_mode == 'ROI Editor':
+                dynamic_content = self.create_roi_tool_layout()
+            else:
+                dynamic_content = self.create_analysis_layout()
+            
+            # Update container directly with the components
+            self.container.children = [persistent_header, dynamic_content]
+
+    def on_analysis_type_change(self, value):
+        """React to analysis type change"""
+        
+        
+        self.log(f'Analysis type changed to {self._selected_analysis_type}')
+
+        self._selected_analysis_type = value['new']
+        self.update_analysis_plot()
+        
+    def update_analysis_plot(self):
+        """update the anslysis plot for when when changing modes and analysis type"""
+        
+        with self.analysis_plot:
+            clear_output(wait=True)
+
+            if self._selected_analysis_type == 'Quality and Type':
+                
+                # first get the quality data as text
+                quality_data = self.get_quality_data(self._selected_roi)
+                if quality_data == "empty_tables":
+                    self.log("Quality indices tables are empty.")
+                    print("Quality indices tables are empty.")
+                    return
+
+                d_qi = quality_data['d_qi']
+                qidx_chirp = quality_data['qidx_chirp']
+
+                # then get the cell type data as text
+                cell_type_data = self.get_celltype_data(self._selected_roi)
+                top_3_groups = cell_type_data['top_3_groups']
+                top_3_scores = cell_type_data['top_3_scores']
+
+                # Create a text output
+                text_output = f"Quality Indices:\nD_QI: {d_qi}\nQIDX_CHIRP: {qidx_chirp}\n\n"
+                text_output += "Top Cell Type Assignments (group, score):\n"
+                for group, score in zip(top_3_groups, top_3_scores):
+                    text_output += f"Group {group}: {score:.2f}\n"
+                
+                # Display the text output
+                print(text_output)
+
+            elif self._selected_analysis_type == 'STA':
+
+                if len(self.wrapper('SplitRF')()) != 0:
+                    self.wrapper('SplitRF')().plot1(key=dict(roi_id=self._selected_roi))
+                else:
+                    print("No SplitRF data available for this ROI.")
+        
+
+    def get_quality_data(self, roi_id):
+        """Get quality indices for a specific ROI"""
+        chirp_qi_table = self.wrapper('ChirpQI')()
+        ori_dir_qi_table = self.wrapper('OsDsIndexes')()
+
+        if len(chirp_qi_table) == 0 or len(ori_dir_qi_table) == 0:
+            return "empty_tables"
+
+        d_qi = (ori_dir_qi_table & dict(roi_id=roi_id)).fetch("d_qi").item()
+        qidx_chirp = (chirp_qi_table & dict(roi_id=roi_id)).fetch("qidx").item()
+
+        return {"d_qi": d_qi, "qidx_chirp": qidx_chirp}
+
+    def get_celltype_data(self, roi_id):
+        """Get celltype assignment data for a specific ROI"""
+        
+        if roi_id is None:
+            return None
+
+        celltype_table = self.wrapper('CelltypeAssignment')()
+        celltype_data = (celltype_table & dict(roi_id=roi_id)).fetch1()
+        confidence_scores = celltype_data['confidence']
+
+        # Get top 3 with scores
+        top_3_indices = confidence_scores.argsort()[-3:][::-1]
+        top_3_groups = top_3_indices + 1 # assume index based group assignment
+        top_3_scores = confidence_scores[top_3_indices]
+
+        assert celltype_data["celltype"] == top_3_groups[0], "Top group does not match celltype assignment"
+
+        return {"top_3_groups": top_3_groups, "top_3_scores": top_3_scores}
+
     def on_mouse_down(self, x, y):
         """React to mouse done on canvas, e.g. by drawing on canvas"""
         self.drawing = True
@@ -1468,6 +1690,7 @@ class InteractiveRoiCanvas(RoiCanvasData):
 
             self.roi_mask_table.RoiMaskPresentation().insert1(new_key)
 
+
     def create_widget_roi_next(self):
         widget = Button(description='>>', disabled=False, button_style='success',
                         layout=Layout(width='50px'))
@@ -1542,262 +1765,6 @@ class InteractiveRoiCanvas(RoiCanvasData):
         self.set_selected_stim(self.pres_names[(self._selected_stim_idx - 1) % len(self.pres_names)])
 
 
-
-class DualModeVisualizationGUI:
-    def __init__(self, 
-                 dj_wrapper,
-                 field_key = None, 
-                 canvas_width=30):
-        """
-        Create a dual-mode visualization interface that switches between
-        ROI editing mode and analysis mode while sharing components.
-        
-        Parameters:
-        -----------
-        dj_wrapper: OpenRetinaWrapper
-            The wrapper for database access
-        canvas_width: int
-            Width percentage of the canvas in the layout
-        """
-        # Create the ROI canvas for editing
-        self.roi_canvas = InteractiveRoiCanvas(
-            dj_wrapper=dj_wrapper,
-            field_key=field_key,
-            canvas_width=canvas_width
-        )
-        
-        # Store references to key visualization components
-        self.dj_wrapper = dj_wrapper
-        self.roi_img = self.roi_canvas.img
-        self.roi_info = self.roi_canvas.widget_info
-        
-        # Create analysis mode components
-        self.analysis_plot = Output()
-        self.selected_roi = None
-        self.analysis_type = Dropdown(
-            options=['Temporal Response', 'Spatial Profile', 'Cell Classification'],
-            value='Temporal Response',
-            description='Analysis:',
-        )
-        self.analysis_type.observe(self.update_analysis_view, names='value')
-        
-        # Create mode selector
-        self.view_mode = Dropdown(
-            options=['ROI Editor', 'Analysis View'],
-            value='ROI Editor',
-            description='View Mode:',
-            layout=Layout(width='200px')
-        )
-        self.view_mode.observe(self.on_mode_change, names='value')
-        
-        # ROI selector for analysis mode
-        self.roi_selector = None
-        
-        # Container for the full UI
-        self.container = VBox([])
-        
-        # Initialize the UI in editor mode
-        self.current_mode = None
-        self.switch_to_editor_mode()
-    
-    def switch_to_editor_mode(self):
-        """Switch to the ROI editor mode"""
-        if self.current_mode == 'ROI Editor':
-            return
-            
-        self.current_mode = 'ROI Editor'
-        self.container.children = [
-            HBox([self.view_mode]),
-            self.roi_canvas.start_gui()
-        ]
-    
-    def switch_to_analysis_mode(self):
-        """Switch to the analysis mode"""
-        if self.current_mode == 'Analysis View':
-            return
-            
-        # Save the currently selected ROI
-        self.selected_roi = self.roi_canvas._selected_roi
-        
-        # Update ROI selector options
-        roi_options = list(np.unique(self.roi_canvas.roi_masks)[1:])  # Skip 0 (background)
-        if not roi_options:
-            roi_options = [1]  # Default if no ROIs
-            
-        # Create or update ROI selector
-        if self.roi_selector is None:
-            self.roi_selector = Dropdown(
-                options=roi_options,
-                value=self.selected_roi if self.selected_roi in roi_options else roi_options[0],
-                description='ROI:',
-                disabled=False
-            )
-            self.roi_selector.observe(self.on_roi_selection_change, names='value')
-        else:
-            self.roi_selector.options = roi_options
-            self.roi_selector.value = self.selected_roi if self.selected_roi in roi_options else roi_options[0]
-        
-        # Create the analysis layout
-        self.current_mode = 'Analysis View'
-        self.container.children = [
-            HBox([self.view_mode, self.analysis_type]),
-            self.create_analysis_layout()
-        ]
-        
-        # Update the analysis view
-        self.update_analysis_view()
-    
-    def create_analysis_layout(self):
-        """Create the layout for analysis mode"""
-        # Left panel: ROI visualization with simplified controls
-        roi_viz = VBox([
-            HTML("<h3>ROI Visualization</h3>"),
-            self.roi_selector,
-            self.roi_img,
-            self.roi_info
-        ], layout=Layout(width='40%'))
-        
-        # Right panel: Analysis visualizations
-        analysis_panel = VBox([
-            HTML(f"<h3>Analysis for ROI #{self.selected_roi}</h3>"),
-            self.analysis_plot
-        ], layout=Layout(width='60%'))
-        
-        # Combine panels
-        return HBox([roi_viz, analysis_panel])
-    
-    def on_mode_change(self, change):
-        """Handle switching between UI modes"""
-        if change['new'] == 'ROI Editor':
-            self.switch_to_editor_mode()
-        else:
-            self.switch_to_analysis_mode()
-    
-    def on_roi_selection_change(self, change):
-        """Handle ROI selection changes in analysis mode"""
-        self.selected_roi = change['new']
-        
-        # Update the ROI visualization in the canvas
-        self.roi_canvas.set_selected_roi(self.selected_roi)
-        
-        # Update the analysis view
-        self.update_analysis_view()
-    
-    def update_analysis_view(self, change=None):
-        """Update the analysis view based on the selected analysis type and ROI"""
-        with self.analysis_plot:
-            self.analysis_plot.clear_output(wait=True)
-            
-            # Get the analysis type
-            analysis_type = self.analysis_type.value
-            roi_id = self.selected_roi
-            
-            # Create figure based on analysis type
-            fig, ax = plt.subplots(figsize=(10, 6))
-            
-            try:
-                if analysis_type == 'Temporal Response':
-                    self.plot_temporal_response(ax, roi_id)
-                elif analysis_type == 'Spatial Profile':
-                    self.plot_spatial_profile(ax, roi_id)
-                elif analysis_type == 'Cell Classification':
-                    self.plot_cell_classification(ax, roi_id)
-                else:
-                    ax.text(0.5, 0.5, "Select an analysis type", 
-                           ha='center', transform=ax.transAxes)
-            except Exception as e:
-                ax.text(0.5, 0.5, f"Error: {str(e)}", 
-                       ha='center', transform=ax.transAxes)
-            
-            plt.tight_layout()
-            plt.show()
-    
-    def plot_temporal_response(self, ax, roi_id):
-        """Plot the temporal response for the selected ROI"""
-        # Get the current stack data
-        current_stack = self.roi_canvas.get_current_stack()
-        roi_mask = self.roi_canvas.roi_masks == roi_id
-        
-        # Extract traces for the ROI
-        if np.any(roi_mask):
-            traces = current_stack[roi_mask]
-            mean_trace = np.mean(traces, axis=0)
-            
-            # Plot individual traces faintly
-            ax.plot(traces.T, color='gray', alpha=0.3, linewidth=0.5)
-            
-            # Plot the mean trace boldly
-            ax.plot(mean_trace, linewidth=2, color='blue')
-            ax.set_title(f"Temporal Response for ROI #{roi_id}")
-            ax.set_xlabel("Time (frames)")
-            ax.set_ylabel("Response")
-        else:
-            ax.text(0.5, 0.5, f"No data for ROI #{roi_id}", 
-                   ha='center', transform=ax.transAxes)
-    
-    def plot_spatial_profile(self, ax, roi_id):
-        """Plot the spatial profile for the selected ROI"""
-        # Create a mask showing just this ROI
-        roi_mask = self.roi_canvas.roi_masks == roi_id
-        
-        if np.any(roi_mask):
-            # Get boundaries of ROI for better visualization
-            y_indices, x_indices = np.where(roi_mask)
-            min_y, max_y = max(0, np.min(y_indices)-3), min(roi_mask.shape[0], np.max(y_indices)+4)
-            min_x, max_x = max(0, np.min(x_indices)-3), min(roi_mask.shape[1], np.max(x_indices)+4)
-            
-            # Get the mean projection of the stack
-            current_stack = self.roi_canvas.get_current_stack()
-            mean_projection = np.mean(current_stack, axis=2)
-            
-            # Create a masked version showing only the ROI area
-            masked_projection = np.ma.array(mean_projection, mask=~roi_mask)
-            
-            # Plot the spatial profile
-            im = ax.imshow(mean_projection, cmap='gray', interpolation='none')
-            plt.colorbar(im, ax=ax, label='Mean intensity')
-            
-            # Overlay the ROI mask in a different color
-            overlay = np.zeros_like(mean_projection)
-            overlay[roi_mask] = 1
-            ax.imshow(overlay, cmap='hot', alpha=0.3, interpolation='none')
-            
-            ax.set_title(f"Spatial Profile for ROI #{roi_id}")
-            ax.set_xlim(min_x, max_x)
-            ax.set_ylim(min_y, max_y)
-        else:
-            ax.text(0.5, 0.5, f"No data for ROI #{roi_id}", 
-                   ha='center', transform=ax.transAxes)
-    
-    def plot_cell_classification(self, ax, roi_id):
-        """Plot the cell classification for the selected ROI"""
-        try:
-            # Try to fetch cell type assignment from the database
-            cell_type_table = self.dj_wrapper('CelltypeAssignment')()
-            cell_type_data = (cell_type_table & {'roi_id': roi_id}).fetch1()
-            
-            # Plot the top cell types and their probabilities as a bar chart
-            top_types = cell_type_data.get('top_3_groups', ['Unknown'])
-            top_scores = cell_type_data.get('top_3_scores', [0])
-            
-            if len(top_types) > 0:
-                y_pos = np.arange(len(top_types))
-                ax.barh(y_pos, top_scores, color='skyblue')
-                ax.set_yticks(y_pos)
-                ax.set_yticklabels(top_types)
-                ax.set_xlabel('Probability')
-                ax.set_title(f'Cell Type Classification for ROI #{roi_id}')
-                ax.set_xlim(0, 1.0)
-            else:
-                ax.text(0.5, 0.5, f"No classification available for ROI #{roi_id}", 
-                       ha='center', transform=ax.transAxes)
-        except Exception as e:
-            ax.text(0.5, 0.5, f"No classification data: {str(e)}", 
-                   ha='center', transform=ax.transAxes)
-    
-    def start_gui(self):
-        """Initialize and return the complete GUI"""
-        return self.container
 
 
 
