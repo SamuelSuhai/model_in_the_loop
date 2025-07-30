@@ -21,7 +21,10 @@ DJ:
 
   table_parameters:
     # for the DJ tables 
-    PreprocessParams: {}
+    PreprocessParams: # {}
+      # for janes densenoise (requires 60 hz trace sampling, dont know why ...)
+      fs_resample: 60
+
       # Below the values for spike estimation I think
       # window_length: 60  # default
       # poly_order: 3,  # default
@@ -59,7 +62,7 @@ paths:
   dj_config_directory: datajoint 
   rgc_output_directory: datajoint/rgc_classifier # dir where classifier should be stored
   recording_files_dir: /gpfs01/euler/data/Data/Suhai/move_closed_loop_data_here
-
+  dummy_ini_dir: data/dummy_ini/
 
 debug: False
 plot_results: True

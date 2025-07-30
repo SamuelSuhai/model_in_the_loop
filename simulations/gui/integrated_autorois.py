@@ -2,7 +2,7 @@ import os.path
 import pickle
 import warnings
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 import numpy as np
 from IPython.display import clear_output
@@ -15,6 +15,7 @@ from djimaging.utils.dj_utils import get_primary_key, check_unique_one
 from djimaging.utils.mask_utils import to_roi_mask_file
 from djimaging.utils.scanm import read_h5_utils, read_utils
 
+from simulations.loop_components.dj_wrappers import (DJTableHolder,Preprocessor,DJComputeWrapper)
 
 try:
     from ipywidgets import HTML, Dropdown, FloatSlider, Button, HBox, VBox, Checkbox, IntSlider, BoundedIntText, \
@@ -50,7 +51,7 @@ class RoiCanvasData:
         self.output_files = output_files
         self.pres_names = pres_names
 
-        
+
         self.other_bgs_dict = bg_dict if bg_dict is not None else dict()
 
         shifts = np.array([np.array([0, 0], dtype=int) for _ in self.ch0_stacks])
@@ -233,10 +234,30 @@ class RoiCanvasData:
 
     def _get_roi_rgb255(self, roi):
         """Get color for ROI"""
+
+        # so that we can set the roi color accrording to some cell attribute like cell type 
+        if hasattr(self,"roi2rgb255_map"):
+            return self.roi2rgb255_map[roi]
+
         return (255 * np.array(hex2color(self.colors[roi % len(self.colors)]))).astype(int)
 
     def _get_roi_alpha255(self, roi):
         """Get alpha for ROI"""
+        
+        # so that we can set the roi alpha according to some cell attribute like cell type
+        if hasattr(self,"roi2alpha255_map"):
+            
+            # for the highlighted roi 
+            if roi == self._selected_roi and self._selected_view in ['highlight', 'selected']:
+                alpha =  int(self.alpha_hl * 255)
+
+            # all others have the dedicated alpha from map
+            else:
+                alpha = self.roi2alpha255_map[roi]
+
+            return alpha
+
+        # default if no analysis specific roi alpha 
         if self._selected_view == 'all' or (
                 self._selected_view in ['highlight', 'selected'] and roi == self._selected_roi):
             return int(self.alpha_hl * 255)
@@ -361,7 +382,9 @@ class InteractiveRoiCanvas(RoiCanvasData):
 
     def __init__(
             self,
-            dj_wrapper,
+            dj_table_holder: DJTableHolder,
+            dj_preprocessor: Preprocessor,
+            all_dj_wrappers: List[DJComputeWrapper],
             field_key=None,
             pres_key= None,
             bg_dict=None,
@@ -374,31 +397,36 @@ class InteractiveRoiCanvas(RoiCanvasData):
             max_shift=5,
             show_diagnostics=False,
     ):
+        self.dj_table_holder = dj_table_holder
+        self.dj_preprocessor = dj_preprocessor
+        self.dj_wrappers_dict = {wrapper.name: wrapper for wrapper in all_dj_wrappers}
+
+
+
 
         # get infor from dj_wrapper
-        wrapper_info = get_roi_canvas_data_from_wrapper(dj_wrapper,field_key,pres_key,)
-        self.wrapper = dj_wrapper
+        table_holder_info = get_roi_canvas_data_from_DJTableHolder(dj_table_holder,field_key,pres_key,)
 
-        super().__init__(ch0_stacks=wrapper_info['ch0_stacks'],
-                         ch1_stacks=wrapper_info['ch1_stacks'],
-                         output_files=wrapper_info['output_files'],
-                         pres_names=wrapper_info['pres_names'],
-                         bg_dict=bg_dict, 
+        super().__init__(ch0_stacks=table_holder_info['ch0_stacks'],
+                         ch1_stacks=table_holder_info['ch1_stacks'],
+                         output_files=table_holder_info['output_files'],
+                         pres_names=table_holder_info['pres_names'],
+                         bg_dict=bg_dict,
                          n_artifact=n_artifact,
                          main_stim_idx=main_stim_idx,
-                         upscale=upscale, 
+                         upscale=upscale,
                          autorois_model_kind=autorois_model_kind,
                          pixel_size_um=pixel_size_um)
-        
+
         # store field key and pres key so we can insert the rois into the database
-        self.field_key = wrapper_info['field_key']
-        self.pres_key = wrapper_info['pres_keys']
+        self.field_key = table_holder_info['field_key']
+        self.pres_key = table_holder_info['pres_keys']
 
         # roi mask table for inserting later
-        self.roi_mask_table = wrapper_info['roi_mask_table']
-        self.roi_table = self.wrapper('Roi')
+        self.roi_mask_table = table_holder_info['roi_mask_table']
+        self.roi_table = self.dj_table_holder('Roi')
 
-        self.debug_mode = False
+        self.debug_mode = False  # Set
 
         # Pause all drawing
         self.draw_updates = False
@@ -408,7 +436,7 @@ class InteractiveRoiCanvas(RoiCanvasData):
         self.canvas_width = canvas_width
 
         # view mode for switching between analysis and roi editing
-                # Create mode selector
+        # Create mode selector
         self.widget_change_mode = self.create_widget_change_mode()
         self._selected_mode = 'ROI Editor'
 
@@ -418,9 +446,10 @@ class InteractiveRoiCanvas(RoiCanvasData):
         self.analysis_plot = Output()
 
         # analysis mode widgets
+        self.available_analysis_types = list(self.dj_wrappers_dict.keys())
+        self._selected_analysis_type = self.available_analysis_types[0]
         self.widget_analysis_type = self.create_widget_analysis_type()
-        self._selected_analysis_type = 'Quality and Type'
-        self.widget_compute_analysis = self.create_widget_compute_analysis()
+
 
         # Create output widget
         self.log_messages = []
@@ -482,7 +511,7 @@ class InteractiveRoiCanvas(RoiCanvasData):
         self.widget_save_all_to_file = self.create_widget_save_all_to_file()
         self.widget_save_info = self.create_widget_save_info()
 
-        self.widget_insert_database = self.create_widget_insert_database()
+        self.widget_insert_database_and_get_traces = self.create_widget_insert_database_and_get_traces()
         self.widget_delete_database = self.create_widget_delete_database()
 
         self.widget_read_only = self.create_widget_read_only()
@@ -513,7 +542,7 @@ class InteractiveRoiCanvas(RoiCanvasData):
 
         self.draw_updates = True
         self.draw_all(update=True)
-    
+
 
     def log(self, message):
         if not self.debug_mode:
@@ -527,41 +556,13 @@ class InteractiveRoiCanvas(RoiCanvasData):
                 print(message)
 
 
-    def create_widget_compute_analysis(self):
-        """Create and return a button for computing the analysis"""
-        widget = Button(description='Compute Analysis', layout=Layout(width='200px'))
-
-
-
-        widget.on_click(self.compute_analysis)
-        return widget
-    
-    def compute_analysis(self,button=None):
-        """execute the functions of the wrapper to compute the analysis"""
-        self.log(f"computing analysis: {self._selected_analysis_type}")
-        
-        if self._selected_analysis_type == 'Quality and Type':
-            self.wrapper.compute_quality_and_type(compute_or_delete='compute',)    
-        
-        elif self._selected_analysis_type == 'STA':
-            self.wrapper.compute_sta(compute_or_delete='compute',)
-
-        elif self._selected_analysis_type == 'MEI':
-            pass
-        else:
-            print(f"Unknown analysis type: {self._selected_analysis_type}")
-
-        # refresh the analysis plot
-        self.update_analysis_plot()
-
-
 
     def create_widget_analysis_type(self):
         """Create and return a dropdown widget for selecting the analysis type"""
-        
-        options = ['Quality and Type', 'STA', 'MEI']
-        widget = Dropdown(options=options, 
-                          value=options[0], 
+
+
+        widget = Dropdown(options=self.available_analysis_types,
+                          value=self._selected_analysis_type,
                           description='Analysis Type:',
                           layout=Layout(width='200px'))
 
@@ -586,7 +587,7 @@ class InteractiveRoiCanvas(RoiCanvasData):
         widget.layout.height = 'auto'
         widget.sync_image_data = True
         return widget
-    
+
     def create_roi_tool_layout(self):
 
 
@@ -605,7 +606,7 @@ class InteractiveRoiCanvas(RoiCanvasData):
             ), layout=Layout(width=f'{100 - self.canvas_width}%'))
 
         w_other_tools = VBox((
-                HBox((self.widget_clean, self.widget_save_all_to_file, self.widget_save_to_file, self.widget_insert_database)),
+                HBox((self.widget_clean, self.widget_save_all_to_file, self.widget_save_to_file, self.widget_insert_database_and_get_traces)),
                 self.widget_save_info,
                 HBox((self.widget_kill_all, self.widget_reset_all, self.widget_delete_database)),
             ))
@@ -621,43 +622,44 @@ class InteractiveRoiCanvas(RoiCanvasData):
         # Analysis output widget for displaying plots
         if not hasattr(self, 'analysis_plot'):
             self.analysis_plot = Output()
-        
+
         # Analysis controls panel
         controls = HBox([
             HTML("<h3>Analysis Controls</h3>"),
             self.widget_analysis_type,
-            self.widget_compute_analysis,
         ])
-        
+
         # Analysis display area
         plots = VBox([
             self.analysis_plot
         ])
-        
+
         # Return the complete layout
         return VBox([controls, plots,self.log_widget])
 
     def start_gui(self):
-        
+
         persistent_header = VBox([
             self.widget_change_mode,
             self.img,
             self.widget_info
         ], layout=Layout(width=f'{self.canvas_width}%'))
 
-    
+
         if self._selected_mode == 'ROI Editor':
             dynamic_content = self.create_roi_tool_layout()
 
         else:
             dynamic_content = self.create_analysis_layout()
 
+            # start the set analysis
+            self.on_analysis_type_change({'new': self._selected_analysis_type})
 
         self.container = HBox([
             persistent_header,
             dynamic_content,
         ])
-        
+
         return self.container
 
     def set_selected_cmap(self, value):
@@ -868,6 +870,11 @@ class InteractiveRoiCanvas(RoiCanvasData):
 
     def exec_autorois_all(self, button=None):
         self.log(f'Executing autorois for current stacks')
+
+        if len(self.roi_mask_table) > 0:
+            warnings.warn("There already is a ROI mask in the DB, which will control downstream analysis\
+                           but the GUI will display the new mask. Delete the DB roi mask to avoid weird stuff.")
+
         self._exec_autorois(missing_only=False, all_stimuli=False)
 
     def exec_autorois_all_stacks(self, button=None):
@@ -1176,20 +1183,20 @@ class InteractiveRoiCanvas(RoiCanvasData):
         widget_save_and_new.on_click(self.exec_save_and_new)
         return widget_save_and_new
 
-    def create_widget_insert_database(self):
-        widget = Button(description='Insert all to DB', disabled=False, button_style='success')
-        widget.on_click(self.exec_insert_database)
+    def create_widget_insert_database_and_get_traces(self):
+        widget = Button(description='Insert all to DB and get traces', disabled=False, button_style='success')
+        widget.on_click(self.exec_insert_database_and_get_traces)
         return widget
-        
+
     def create_widget_delete_database(self):
         widget = Button(description='Delete from DB', disabled=True, button_style='danger')
         widget.on_click(self.exec_delete_database)
         return widget
-        
+
     def exec_delete_database(self, button=None):
         self.log('Executing delete from database')
-        
-        self.roi_mask_table.delete()
+
+        (self.roi_mask_table & self.field_key).delete(safemode=False)
         self.widget_save_info.description = 'DB Entries Deleted!'.ljust(20)
 
     def exec_clean(self, button=None):
@@ -1245,9 +1252,9 @@ class InteractiveRoiCanvas(RoiCanvasData):
             self.set_new_roi_mask(self._initial_roi_mask)
             self.set_dangerzone(False)
 
-    def exec_insert_database(self, button=None):
+    def exec_insert_database_and_get_traces(self, button=None):
         self.log('Executing insert database')
-        self.insert_database()
+        self.insert_database_and_get_traces()
 
     def create_widget_save_to_file(self):
         widget = Button(description='Save to file', disabled=False, button_style='warning')
@@ -1449,102 +1456,65 @@ class InteractiveRoiCanvas(RoiCanvasData):
         if self._selected_mode != value['new']:
             self.log(f'Mode changed to {value['new']}')
             self._selected_mode = value['new']
-            
+
             # Build new content
             persistent_header = VBox([
                 self.widget_change_mode,
                 self.img,
                 self.widget_info
                 ], layout=Layout(width=f'{self.canvas_width}%'))
-                
+
             if self._selected_mode == 'ROI Editor':
                 dynamic_content = self.create_roi_tool_layout()
             else:
                 dynamic_content = self.create_analysis_layout()
-            
+
             # Update container directly with the components
             self.container.children = [persistent_header, dynamic_content]
 
     def on_analysis_type_change(self, value):
-        """React to analysis type change"""
-        
-        
-        self.log(f'Analysis type changed to {self._selected_analysis_type}')
+        """
+         When the user changes analysis types,  """
 
         self._selected_analysis_type = value['new']
+
+        self.log(f'Analysis type changed to {self._selected_analysis_type}')
+
+        # display in the analysis_plot that the analysis is being computed
+        with self.analysis_plot:
+            clear_output(wait=True)
+            print(f'Preparing or computing {self._selected_analysis_type} analysis for ROI {self._selected_roi}...')
+
+
+        # update the analysis plot with the data we got
         self.update_analysis_plot()
-        
+
     def update_analysis_plot(self):
-        """update the anslysis plot for when when changing modes and analysis type"""
-        
+        """Compute (if not already done) update the anslysis plot for when when changing modes and analysis type and ROIs"""
+        # call the compute function. Checking whether its already computed is done in the wrapper
+
+        self.dj_wrappers_dict[self._selected_analysis_type].compute_analysis(field_key = self.field_key)
+
         with self.analysis_plot:
             clear_output(wait=True)
 
-            if self._selected_analysis_type == 'Quality and Type':
-                
-                # first get the quality data as text
-                quality_data = self.get_quality_data(self._selected_roi)
-                if quality_data == "empty_tables":
-                    self.log("Quality indices tables are empty.")
-                    print("Quality indices tables are empty.")
-                    return
+            self.log(f'Updating analysis plot for {self._selected_analysis_type}')
 
-                d_qi = quality_data['d_qi']
-                qidx_chirp = quality_data['qidx_chirp']
+            # call the plotting function of the wrapper if a single roi is selected. This distinguishes between the overview mode
+            # when all ROIs should be selected. The output of the functions will be displayed in the analysis_plot widget.
+            if self._selected_roi == 0:
+                self.log(f'gettin gplot for selected roi  {self._selected_roi}')
+                fig,ax = self.dj_wrappers_dict[self._selected_analysis_type].plot_overview()
+                self.log(f'gettin gplot for selected roi  {self._selected_roi}')
 
-                # then get the cell type data as text
-                cell_type_data = self.get_celltype_data(self._selected_roi)
-                top_3_groups = cell_type_data['top_3_groups']
-                top_3_scores = cell_type_data['top_3_scores']
+            elif self._selected_roi > 0:
 
-                # Create a text output
-                text_output = f"Quality Indices:\nD_QI: {d_qi}\nQIDX_CHIRP: {qidx_chirp}\n\n"
-                text_output += "Top Cell Type Assignments (group, score):\n"
-                for group, score in zip(top_3_groups, top_3_scores):
-                    text_output += f"Group {group}: {score:.2f}\n"
-                
-                # Display the text output
-                print(text_output)
+                self.log(f'gettin gplot for selected roi  {self._selected_roi}')
 
-            elif self._selected_analysis_type == 'STA':
+                # plot1 shows the figure 
+                self.dj_wrappers_dict[self._selected_analysis_type].plot1(field_key = self.field_key,roi_id= self._selected_roi)
 
-                if len(self.wrapper('SplitRF')()) != 0:
-                    self.wrapper('SplitRF')().plot1(key=dict(roi_id=self._selected_roi))
-                else:
-                    print("No SplitRF data available for this ROI.")
-        
-
-    def get_quality_data(self, roi_id):
-        """Get quality indices for a specific ROI"""
-        chirp_qi_table = self.wrapper('ChirpQI')()
-        ori_dir_qi_table = self.wrapper('OsDsIndexes')()
-
-        if len(chirp_qi_table) == 0 or len(ori_dir_qi_table) == 0:
-            return "empty_tables"
-
-        d_qi = (ori_dir_qi_table & dict(roi_id=roi_id)).fetch("d_qi").item()
-        qidx_chirp = (chirp_qi_table & dict(roi_id=roi_id)).fetch("qidx").item()
-
-        return {"d_qi": d_qi, "qidx_chirp": qidx_chirp}
-
-    def get_celltype_data(self, roi_id):
-        """Get celltype assignment data for a specific ROI"""
-        
-        if roi_id is None:
-            return None
-
-        celltype_table = self.wrapper('CelltypeAssignment')()
-        celltype_data = (celltype_table & dict(roi_id=roi_id)).fetch1()
-        confidence_scores = celltype_data['confidence']
-
-        # Get top 3 with scores
-        top_3_indices = confidence_scores.argsort()[-3:][::-1]
-        top_3_groups = top_3_indices + 1 # assume index based group assignment
-        top_3_scores = confidence_scores[top_3_indices]
-
-        assert celltype_data["celltype"] == top_3_groups[0], "Top group does not match celltype assignment"
-
-        return {"top_3_groups": top_3_groups, "top_3_scores": top_3_scores}
+   
 
     def on_mouse_down(self, x, y):
         """React to mouse done on canvas, e.g. by drawing on canvas"""
@@ -1667,7 +1637,18 @@ class InteractiveRoiCanvas(RoiCanvasData):
         condition = stim_condition.split('(')[1].split(')')[0]
         return stim, condition
 
-    def insert_database(self):
+    def check_databse_for_mask(self) ->None:
+
+
+        self.init_roi_mask(roi_mask_new)
+        self.update_info()
+        self.update_roi_options()
+        self.draw_current_mask_img(update=True)
+        self.draw_roi_masks_img(update=True)
+
+    def insert_database_and_get_traces(self):
+        """Inserts ROI mask into DB and calls on the preporcessor to compute the traces, necessar for further analysis"""
+
         from djimaging.utils.mask_utils import to_igor_format, compare_roi_masks
 
         pres_and_roi_mask = []
@@ -1689,6 +1670,13 @@ class InteractiveRoiCanvas(RoiCanvasData):
             new_key['shift_dy'] = shift_dy
 
             self.roi_mask_table.RoiMaskPresentation().insert1(new_key)
+
+        # compute the rois
+        self.log(f'Inserting {len(pres_and_roi_mask)} ROI masks into database')
+        self.dj_preprocessor.add_iteration_rois()
+
+        self.log(f'Getting traces for  {len(pres_and_roi_mask)} ROI masks into database')
+        self.dj_preprocessor.add_iteration_traces()
 
 
     def create_widget_roi_next(self):
@@ -1895,29 +1883,29 @@ def load_stack_data(files, data_name, alt_name, from_raw_data,
     return ch0_stacks, ch1_stacks, output_files
 
 
-def get_roi_canvas_data_from_wrapper(wrapper, 
-                                    field_key=None, 
-                                    pres_key=None, 
-                                    load_high_res=True, 
-                                    roi_mask_dir='ROIs', 
-                                    old_prefix=None, 
-                                    new_prefix=None,    
+def get_roi_canvas_data_from_DJTableHolder(dj_table_holder: DJTableHolder,
+                                    field_key=None,
+                                    pres_key=None,
+                                    load_high_res=True,
+                                    roi_mask_dir='ROIs',
+                                    old_prefix=None,
+                                    new_prefix=None,
                                     use_stim_onset=True,
                                     verbose=True, ) -> Dict[str, Any]:
         """Retrieves the info needde for the roi canvas from the datajoint wrapper"""
 
         # store the tables from the wrapper for easy access
-        roi_mask_table = wrapper('RoiMask')()
-        userinfo_table = wrapper('UserInfo')()
-        field_table = wrapper('Field')()
-        raw_params_table = wrapper('RawDataParams')()
-        presentation_table = wrapper('Presentation')()
+        roi_mask_table = dj_table_holder('RoiMask')()
+        userinfo_table = dj_table_holder('UserInfo')()
+        field_table = dj_table_holder('Field')()
+        raw_params_table = dj_table_holder('RawDataParams')()
+        presentation_table = dj_table_holder('Presentation')()
 
-        
-        
+
+
         # get the keys for which to draw rois
         if pres_key is not None:
-            field_key = (field_table & pres_key).fetch1('KEY') 
+            field_key = (field_table & pres_key).fetch1('KEY')
         elif field_key is None:
             field_key = np.random.choice(roi_mask_table.list_missing_field())
 
@@ -1928,7 +1916,7 @@ def get_roi_canvas_data_from_wrapper(wrapper,
         from_raw_data = (raw_params_table & field_key).fetch1("from_raw_data")
         field_file_info_df = roi_mask_table.load_field_file_info_df(field_key)
         all_filepaths = field_file_info_df[field_file_info_df['kind'] == 'response']['filepath'].values
-        
+
         pres_keys = []
         filepaths = []
 
@@ -1942,7 +1930,7 @@ def get_roi_canvas_data_from_wrapper(wrapper,
 
         pres_names = [{k: v for k, v in pres_key.items() if k not in field_key.keys()}
                       for pres_key in pres_keys]
-        
+
         # Load stack data
         data_name, alt_name = (userinfo_table & field_key).fetch1('data_stack_name', 'alt_stack_name')
         ch0_stacks, ch1_stacks, output_files = load_stack_data(
@@ -1959,7 +1947,7 @@ def get_roi_canvas_data_from_wrapper(wrapper,
         # Load pixel size and scan type
         n_artifact, pixel_size_um, scan_type = (presentation_table & pres_keys).fetch(
             'npixartifact', 'pixel_size_um', 'scan_type')
-        
+
         n_artifact = check_unique_one(n_artifact, name='n_artifact')
         pixel_size_um = check_unique_one(pixel_size_um, name='pixel_size_um')
         scan_type = check_unique_one(scan_type, name='scan_type')
@@ -1997,7 +1985,7 @@ def get_roi_canvas_data_from_wrapper(wrapper,
         if pres_names is None:
             pres_names = [f"stim{i + 1}" for i in range(len(ch0_stacks))]
 
-        
+
         # return all the self.attributes
         return {
             'ch0_stacks': ch0_stacks,

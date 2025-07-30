@@ -18,7 +18,7 @@ def copy_stim_files(recording_files_dir: str,
                     date: int, 
                     experiment: int,
                     permissible_stimulus_types: List[str] = ["chirp","dn","mb","mc"],
-                    dummy_ini_path: Optional[str] = None,
+                    full_dummy_ini_dir: Optional[str] = None,
                     ) -> None:
     """
     Copies all smp, smh and ini files from recording dir to a dir structure that one can use in DJ.
@@ -38,6 +38,7 @@ def copy_stim_files(recording_files_dir: str,
         file_info_list = filename.split('.')[0].split('_')
         file_info_list = [info.lower() for info in file_info_list]  # Normalize to lowercase
         if not any(stimulus_type in file_info_list for stimulus_type in permissible_stimulus_types):
+            print(f"SKIPPING File {filename}: does not match any permissible stimulus type.")
             continue
 
         filtered_files_in_dir.append(filename)
@@ -73,26 +74,27 @@ def copy_stim_files(recording_files_dir: str,
         
         # check if file already exists
         if os.path.exists(new_path_full):
-            print(f"File {new_path_full} already exists, skipping.")
+            print(f"SKIPPING File {new_path_full} already exists, skipping.")
             continue
 
         # Copy the files with different endings
         shutil.copy(source_file, new_path_full)
-        print(f"Copied file from {source_file} to {new_path_full}")
+        print(f"COPIED file from {source_file} to {new_path_full}")
     
 
     # deal with the case of missing ini file
     has_ini_file = any(file.endswith('.ini') for file in filtered_files_in_dir)
     
     if not has_ini_file:
-        # copy dummy ini file
-        if dummy_ini_path is None:
-            raise ValueError("dummy_ini_path must be provided if no ini file is found")
 
+        if full_dummy_ini_dir is None:
+            raise ValueError("full_dummy_ini_dir must be provided if no ini file is found")
 
-        dummy_ini_dest = os.path.join(destination_base, str(date), str(experiment), os.path.basename(dummy_ini_path))
-        shutil.copy(dummy_ini_path, dummy_ini_dest)
-        print(f"Copied dummy ini file from {dummy_ini_path} to {dummy_ini_dest}")
+        full_dummy_ini_file_path = os.path.join(full_dummy_ini_dir, "dummy.ini")
+        dummy_ini_dest = os.path.join(destination_base, str(date), str(experiment), f"{str(date)}_left.ini")
+
+        shutil.copy(full_dummy_ini_file_path, dummy_ini_dest)
+        print(f"NO INI FILE found.\nCOPIED dummy ini file from {full_dummy_ini_file_path} to {dummy_ini_dest}")
 
 class StimulusFileCopier:
 
