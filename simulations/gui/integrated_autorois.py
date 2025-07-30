@@ -426,7 +426,7 @@ class InteractiveRoiCanvas(RoiCanvasData):
         self.roi_mask_table = table_holder_info['roi_mask_table']
         self.roi_table = self.dj_table_holder('Roi')
 
-        self.debug_mode = False  # Set
+        self.debug_mode = True  # Set
 
         # Pause all drawing
         self.draw_updates = False
@@ -1483,11 +1483,23 @@ class InteractiveRoiCanvas(RoiCanvasData):
         # display in the analysis_plot that the analysis is being computed
         with self.analysis_plot:
             clear_output(wait=True)
-            print(f'Preparing or computing {self._selected_analysis_type} analysis for ROI {self._selected_roi}...')
+            print(f'Preparing or computing {self._selected_analysis_type} analysis...')
 
 
         # update the analysis plot with the data we got
         self.update_analysis_plot()
+
+        # change roi coloring
+        if hasattr(self.dj_wrappers_dict[self._selected_analysis_type],'get_roi2rgb_and_alpha_255_map') and not hasattr(self, 'roi2rgb255_map'):
+            self.log(f'Got roi2rgba_map for {self._selected_analysis_type}')
+            roi2rgb255_map,roi2alpha255_map = self.dj_wrappers_dict[self._selected_analysis_type].get_roi2rgb_and_alpha_255_map(field_key=self.field_key)
+            self.roi2rgb255_map = roi2rgb255_map
+            self.roi2alpha255_map = roi2alpha255_map
+            
+            self.update_roi_mask_img()
+            self.draw_roi_masks_img(update=True)
+
+
 
     def update_analysis_plot(self):
         """Compute (if not already done) update the anslysis plot for when when changing modes and analysis type and ROIs"""

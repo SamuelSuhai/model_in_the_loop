@@ -454,6 +454,18 @@ class DJComputeWrapper(ABC):
 
 class QualityAndTypeWrapper(DJComputeWrapper):
     """Groups table operations for quality metrics and cell type assignment."""
+    
+    # a color map used to get an roi 2 color mapping based on the g name
+    g_name_to_rgb255 = {
+        "OFF": np.array([255, 0, 0]),
+        "ON-OFF": np.array([255, 128, 0]),
+        "Fast ON": np.array([0, 255, 0]),
+        "Slow ON": np.array([0, 128, 255]),
+        "Uncertain RGCs": np.array([128, 0, 255]),
+        "ACs": np.array([255, 0, 255])
+    }
+
+
 
     def __init__(self, dj_table_holder: DJTableHolder):
         """
@@ -513,6 +525,24 @@ class QualityAndTypeWrapper(DJComputeWrapper):
             return "Uncertain RGCs"
         elif g >= 33:
             return "ACs"
+        else:
+            raise ValueError(f"Unknown group {g} for g_to_type_name")
+
+    
+    def g_to_rgb255(self,g: int) -> np.ndarray:
+        """Converts the G (celltype) to a superclass type name and from there the designated RGB255 color."""
+
+        g_name = self.g_to_type_name(g)
+        return self.g_name_to_rgb255[g_name]
+
+
+    # range mapping from quality index to alpha value 
+    
+    def qi2alpha255(self,qi: float,alpha_min = 0.2,alpha_max = 0.8) -> float:
+        assert 0 <= qi <= 1, "Quality index must be between 0 and 1"
+        return (alpha_min + (qi * (alpha_max - alpha_min))) * 255
+
+
     
     def text1(self,roi_id: int, field_key = {}, ) -> str:
         """
@@ -521,11 +551,11 @@ class QualityAndTypeWrapper(DJComputeWrapper):
         roi_restriction = {'roi_id': roi_id}
         chirp_qi_table = self.dj_table_holder('ChirpQI')() & field_key
         ori_dir_qi_table = self.dj_table_holder('OsDsIndexes')() & field_key
+        celltype_table = self.dj_table_holder('CelltypeAssignment')() & field_key
 
         d_qi = (ori_dir_qi_table & roi_restriction).fetch("d_qi").item()
         qidx_chirp = (chirp_qi_table & roi_restriction).fetch("qidx").item()
 
-        celltype_table = self.dj_table_holder('CelltypeAssignment')() & field_key
         celltype_data = (celltype_table & roi_restriction).fetch1()
         confidence_scores = celltype_data['confidence']
 
@@ -615,6 +645,25 @@ class QualityAndTypeWrapper(DJComputeWrapper):
                 self.dj_table_holder(table_name)().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
                 sleep(self.dj_table_holder.sleep_time_between_table_ops)
 
+    def get_roi2rgb_and_alpha_255_map(self,field_key: Dict[str, Any]) -> Tuple[Dict[int, np.ndarray], Dict[int, float]]:
+        """
+        Get two mappings: one for roi to rgb based on celltype and one roi to alpha based on chirpQI
+        
+
+        """
+        
+        # get celltype for each roi 
+        celltype_table = self.dj_table_holder('CelltypeAssignment')() & field_key
+        celltype_data = celltype_table.fetch('roi_id', 'celltype',as_dict=True)
+        roi2rgb255 = {data['roi_id']: self.g_to_rgb255(data['celltype']) for data in celltype_data}
+
+        # get chirpQI for each roi
+        chirp_qi_table = self.dj_table_holder('ChirpQI')() & field_key
+        chirp_qi_data = chirp_qi_table.fetch('roi_id', 'qidx', as_dict=True)
+        roi2alpha = {data['roi_id']: self.qi2alpha255(data['qidx']) for data in chirp_qi_data}
+
+        return roi2rgb255, roi2alpha
+         
     
     def plot_roi_overview(self, roi_keys: List[Dict[str, Any]]) -> None:
         """
