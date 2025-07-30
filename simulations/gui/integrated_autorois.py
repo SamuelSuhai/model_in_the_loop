@@ -237,7 +237,10 @@ class RoiCanvasData:
 
         # so that we can set the roi color accrording to some cell attribute like cell type 
         if hasattr(self,"roi2rgb255_map"):
-            return self.roi2rgb255_map[roi]
+            
+            # rois that were excluded form analysis are black
+            rgb255 = self.roi2rgb255_map.get(roi,np.array([0, 0, 0], dtype=int))
+            return rgb255
 
         return (255 * np.array(hex2color(self.colors[roi % len(self.colors)]))).astype(int)
 
@@ -253,7 +256,9 @@ class RoiCanvasData:
 
             # all others have the dedicated alpha from map
             else:
-                alpha = self.roi2alpha255_map[roi]
+
+                # rois that were excluded from analysis are just black
+                alpha = self.roi2alpha255_map.get(roi,255)
 
             return alpha
 

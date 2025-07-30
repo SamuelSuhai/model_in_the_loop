@@ -729,6 +729,9 @@ class STAWrapper(DJComputeWrapper):
         # plot it and 
         restricted_split_rf.plot1()
 
+        # set title to roi 
+        plt.gcf().suptitle(f"SplitRF for ROI {roi_id}", fontsize=16)
+
 
 
 
