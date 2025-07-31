@@ -1,7 +1,7 @@
 
 
 
-from typing import Dict,Any,Protocol, List
+from typing import Dict,Any,Protocol, List,Tuple
 import torch
 import logging
 import os
@@ -13,6 +13,8 @@ from openretina.models.core_readout import BaseCoreReadout
 from openretina.models.core_readout import load_core_readout_model
 from openretina.data_io.hoefling_2024.responses import filter_responses, make_final_responses
 from openretina.data_io.base import MoviesTrainTestSplit, ResponsesTrainTestSplit
+from openretina.utils.video_analysis import decompose_kernel
+
 
 import lightning.pytorch
 import torch.utils.data as data
@@ -90,7 +92,7 @@ def generate_optimization_components(stimulus_range_constraints: Dict[str, float
 
 
 
-@time_it
+#@time_it
 def generate_mei(model: BaseCoreReadout,
                       new_sessoin_id:str,
                       stimulus_postprocessor,
@@ -124,6 +126,47 @@ def generate_mei(model: BaseCoreReadout,
 
     return stimulus[0] # return first batch
 
+
+def decompose_mei(stimulus: np.ndarray, frame_rate_model: float = 30.0) -> Tuple[List[np.ndarray], List[np.ndarray], np.ndarray]:
+    assert stimulus.ndim == 4, "Stimulus should be a 4D array (num_color_channels, time_steps, dim_y, dim_x)"
+ 
+    num_color_channels, time_steps, dim_y, dim_x = stimulus.shape
+
+    stimulus_time = np.linspace(0, time_steps / frame_rate_model, time_steps)
+
+
+    temporal_kernels = []
+    spatial_kernels = []
+    for color_idx in range(num_color_channels):
+        temporal, spatial, _ = decompose_kernel(stimulus[color_idx])
+        temporal_kernels.append(temporal)
+        spatial_kernels.append(spatial)
+
+    return temporal_kernels, spatial_kernels, stimulus_time
+
+
+def get_model_mei_response(model: BaseCoreReadout, mei: torch.Tensor, session_id: str, neuron_id: int) -> np.ndarray:
+    
+    # check if mei correct shape of b,c,t,w,h
+    if mei.ndim == 4:
+        mei = mei.unsqueeze(0)
+    
+    # check if on correct device
+    if mei.device != DEVICE:
+        mei = mei.to(DEVICE)
+
+    # set model to eval mode
+    if model.training:
+        model.eval()
+
+    with torch.no_grad():
+        single_mei_response = model.forward(mei, data_key=session_id)[0, :, neuron_id].detach().cpu().numpy()
+    
+    return single_mei_response
+            
+        
+
+
 def generate_meis_with_n_random_seeds(
     model: BaseCoreReadout,
     new_session_id: str,
@@ -148,8 +191,13 @@ def generate_meis_with_n_random_seeds(
     )
     
     all_meis = {neuron_id: {} for neuron_id in neuron_ids_to_analyze}
-    for neuron_id in neuron_ids_to_analyze:
-        for i,seed in enumerate(random_seeds):
+    
+    for i,seed in enumerate(random_seeds):
+        lightning.pytorch.seed_everything(seed)
+
+        for neuron_id in neuron_ids_to_analyze:
+            
+            # set the seed 
             single_neuron_seed_mei = generate_mei(model=model,
                         new_sessoin_id = new_session_id,
                         stimulus_postprocessor = stimulus_postprocessor,
@@ -293,13 +341,13 @@ def train_model_online(cfg: DictConfig,
 
     return model
 
-@time_it
-def preprocess_for_openretina(raw_neuron_data_dict:Dict[str,Dict[str,Any]]) -> Dict[str,ResponsesTrainTestSplit]:
-    filt_neuron_data =  filter_responses(raw_neuron_data_dict)
-    neuron_data_dict =  make_final_responses(filt_neuron_data) 
+#@time_it
+def preprocess_for_openretina(raw_neuron_data_dict:Dict[str,Dict[str,Any]],model_condigs) -> Dict[str,ResponsesTrainTestSplit]:
+    filt_neuron_data =  filter_responses(raw_neuron_data_dict, **model_condigs.quality_checks)
+    neuron_data_dict =  make_final_responses(filt_neuron_data,response_type="natural") 
     return neuron_data_dict
 
-@time_it
+#@time_it
 def save_new_stimulus_position(new_session_id: str ,full_path: str,raw_neuron_data_dict:Dict[str,Dict[str,Any]],neuron_id: int = 0) -> None:
     """Retrieves peak RF position and saves that info in a yaml file in the stimuli directory."""
     
@@ -332,7 +380,7 @@ def from_data_to_mei_video(cfg: DictConfig, raw_neuron_data_dict:Dict[str,Dict[s
 
     movies_dict = load_stimuli(cfg.model_configs)
 
-    neuron_data_dict = preprocess_for_openretina(raw_neuron_data_dict)
+    neuron_data_dict = preprocess_for_openretina(raw_neuron_data_dict,cfg.model_configs)
     
     # load and refine model
     model = train_model_online(cfg.model_configs,neuron_data_dict,movies_dict)

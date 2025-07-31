@@ -13,7 +13,10 @@ from abc import ABC, abstractmethod
 from djimaging.utils import plot_utils
 from djimaging.utils.dj_utils import get_primary_key
 from .utils import time_it
-from .model_to_stimulus import load_stimuli, preprocess_for_openretina,train_model_online,generate_meis_with_n_random_seeds
+from .model_to_stimulus import (load_stimuli, preprocess_for_openretina,
+                                train_model_online,generate_meis_with_n_random_seeds,
+                                decompose_mei, get_model_mei_response
+            )
 
 
 
@@ -458,12 +461,12 @@ class QualityAndTypeWrapper(DJComputeWrapper):
     
     # a color map used to get an roi 2 color mapping based on the g name
     g_name_to_rgb255 = {
-        "OFF": np.array([255, 0, 0]),
-        "ON-OFF": np.array([255, 128, 0]),
-        "Fast ON": np.array([0, 255, 0]),
-        "Slow ON": np.array([0, 128, 255]),
-        "Uncertain RGCs": np.array([128, 0, 255]),
-        "ACs": np.array([255, 0, 255])
+        "OFF": np.array([255, 0, 0]),          # Red
+        "ON-OFF": np.array([0, 255, 0]),      # Green
+        "Fast ON": np.array([64, 224, 208]),  # Turquoise
+        "Slow ON": np.array([0, 0, 255]),     # Blue
+        "Uncertain RGCs": np.array([128, 0, 128]),  # Purple
+        "ACs": np.array([255, 255, 255])        # white
     }
 
 
@@ -739,7 +742,7 @@ class STAWrapper(DJComputeWrapper):
 
 class RandomSeedMEIWrapper(DJComputeWrapper):
 
-    def __init__(self,dj_table_holder,model_configs) -> None:
+    def __init__(self,dj_table_holder,model_configs,seeds: List[int]) -> None:
         
         self.dj_table_holder = dj_table_holder
 
@@ -749,13 +752,83 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         ]
         self.model_configs = model_configs
 
-        # to store the data
-        self.neuron_seed_mei_dict = None
+        # to store the data: the key is the index in the readout and not the roi_id
+        self.neuron_seed_mei_dict = {}
+        self.neuron_seed_mei_responses = {}
+        self.neuron_seed_decomposed_meis = {}
 
-    def plot1(self,field_key: Dict[str,Any] = {}) -> None:
+        # these are the roi ids that were kept after filtering
+        self.rois_after_filtering: List[int] = []
 
-        pass
+        self.display_channel = 1 # UV channel 
+
+        self.seeds = seeds
+        self.colors = plt.cm.nipy_spectral(np.linspace(0, 1,len(self.seeds))) 
+
+    def plot_seed_respones(self,neuron_id: int,ax: plt.Axes, optimization_window= (10,20),response_window = (21,50)):
+        """
+        Plots the responses of all seeds for a single neuron.
+        all_meis_responses: has the structure {seed: response}
+        optimization_window: what part of the  repsonse of the neuron was optimized. Then the frame of the start of the repsonse is added during plotting
+        """
+        response_start, respones_end = response_window
     
+        all_meis_responses: Dict[int, np.ndarray] = self.neuron_seed_mei_responses[neuron_id]
+
+        x = np.arange(response_start, respones_end + 1)
+        for i,(seed, response) in enumerate(all_meis_responses.items()):
+            ax.plot(x,response, label=f"Seed {seed}", color=self.colors[i], linestyle='-' if seed % 2 == 0 else '--')
+
+        ax.set_xlabel("Time (frames)")
+        ax.set_xlim(0, respones_end)
+        ax.set_ylabel("Response")
+        
+        # Highlight the optimization window
+        if optimization_window is not None:
+            start , end  = optimization_window
+            start += response_start
+            end += response_start
+            ax.axvspan(start , end, color='yellow', alpha=0.3, label='Optimization Window')
+        ax.legend(ncol=2, fontsize=6)
+
+
+    def plot_temporal_kernels(self,neuron_id: int, ax: plt.Axes) -> None:
+        """
+        Plots the temporal kernels of all seeds for a single neuron.
+        """
+        seed_neuron_decomposed_meis = self.neuron_seed_decomposed_meis[neuron_id]
+        for i,(seed, decomposition) in enumerate(seed_neuron_decomposed_meis.items()):
+            temporal_kernel = decomposition['temporal_kernels'][self.display_channel]
+            ax.plot(temporal_kernel, label=f'Seed {seed}', color=self.colors[i], linestyle='-' if seed % 2 == 0 else '--')
+        
+        ax.set_xlabel('Time (frames)')
+        ax.set_ylabel('Temporal Kernel')
+        ax.legend()
+
+    def plot1(self,roi_id: int, field_key: Dict[str,Any] = {}) -> None:
+
+        if roi_id not in self.rois_after_filtering:
+            print("ROI ID not found in filtered rois. Available IDs:", self.rois_after_filtering)
+            return 
+        
+        # find neuron_id for roi_id
+        neuron_id = self.rois_after_filtering.index(roi_id)
+
+
+        # plot temporal kernels in a line plot
+        fig,axs = plt.subplots(1,2,figsize=(10, 5))
+        self.plot_temporal_kernels(neuron_id, ax=axs[0])
+        axs[0].set_title(f"Temporal Kernels for Neuron {neuron_id} (ROI {roi_id})")
+
+    
+
+        # plot responses 
+        self.plot_seed_respones(neuron_id, ax=axs[1], optimization_window=(10,20), response_window=(21,50))
+        axs[1].set_title(f"Responses to MEIs")
+
+        plt.show()
+
+
     def plot_roi_overview(self, roi_keys: List[Dict[str, Any]]) -> None:
         pass
 
@@ -783,31 +856,57 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
             self.check_requirements(field_key)
 
+            ## model training 
             session_dict_raw = self.dj_table_holder('OpenRetinaHoeflingFormat')().extract_data()
-            return session_dict_raw
-            # # preprocess and filter further 
-            # movies_dict = load_stimuli(self.model_configs)
+            
+            # preprocess and filter further 
+            movies_dict = load_stimuli(self.model_configs)
 
-            # neuron_data_dict = preprocess_for_openretina(session_dict_raw)
+            neuron_data_dict = preprocess_for_openretina(session_dict_raw,self.model_configs)
     
-            # # load and refine model
-            # model = train_model_online(self.model_configs,neuron_data_dict,movies_dict)
-            
-            # new_session_id = list(session_dict_raw.keys())[0]
-
-            # # for debug: check roi_id to neuron_id mapping
-            # neuron_ids_to_analyze = list(neuron_data_dict[new_session_id].keys())
-
-            # self.neuron_seed_mei_dict = generate_meis_with_n_random_seeds(
-            #                             model = model,
-            #                             new_session_id = new_session_id,
-            #                             random_seeds = [42],
-            #                             neuron_ids_to_analyze = neuron_ids_to_analyze, # NOTE: this will optimize each id individually 
-            #                             set_model_to_eval_mode = False, # model in training mode for noisy MEIs
-            #                         )
-            
+            # load and refine model
+            model = train_model_online(self.model_configs,neuron_data_dict,movies_dict)
             
 
+            ## MEI generatio 
+            new_session_id = list(session_dict_raw.keys())[0]
+
+            # for debug: check roi_id to neuron_id mapping
+            self.rois_after_filtering: List[int] = neuron_data_dict[new_session_id].session_kwargs["roi_ids"].tolist()
+
+            # the neuron_id is the index in the readout I think, so we need a mapping betwen roi_id and neuron_id
+            neurons_ids_to_analyze = list(range(len(self.rois_after_filtering)))
+
+            self.neuron_seed_mei_dict = generate_meis_with_n_random_seeds(
+                                        model = model,
+                                        new_session_id = new_session_id,
+                                        random_seeds =self.seeds,
+                                        neuron_ids_to_analyze = neurons_ids_to_analyze, # NOTE: this will optimize each id individually 
+                                        set_model_to_eval_mode = False, # model in training mode for noisy MEIs
+                                    )
+
+            
+
+            ## generate responses for the MEIs and decompose them
+            self.neuron_seed_mei_responses = {neuron_id: {} for neuron_id in self.neuron_seed_mei_dict.keys()}
+            self.neuron_seed_decomposed_meis = {neuron_id: {} for neuron_id in self.neuron_seed_mei_dict.keys()}
+            for neuron_id,seed_dict in self.neuron_seed_mei_dict.items():
+                for seed,mei in seed_dict.items():
+
+                    # responses 
+                    response = get_model_mei_response(model = model,
+                                                      mei=mei,
+                                                      session_id = new_session_id,
+                                                      neuron_id = neuron_id,)
+                    self.neuron_seed_mei_responses[neuron_id][seed] = response
+
+                    # decompose the MEIs
+                    temporal_kernels, spatial_kernels, stimulus_time = decompose_mei(stimulus = mei.detach().cpu().numpy())
+                    self.neuron_seed_decomposed_meis[neuron_id][seed] = {
+                        "temporal_kernels": temporal_kernels,
+                        "spatial_kernels": spatial_kernels,
+                        "stimulus_time": stimulus_time,
+                    }
 
 
 
