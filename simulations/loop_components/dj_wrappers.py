@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 from djimaging.utils import plot_utils
 from djimaging.utils.dj_utils import get_primary_key
 from .utils import time_it
+from .model_to_stimulus import load_stimuli, preprocess_for_openretina,train_model_online,generate_meis_with_n_random_seeds
 
 
 
@@ -736,6 +737,80 @@ class STAWrapper(DJComputeWrapper):
 
 
 
+class RandomSeedMEIWrapper(DJComputeWrapper):
+
+    def __init__(self,dj_table_holder,model_configs) -> None:
+        
+        self.dj_table_holder = dj_table_holder
+
+        self.requires_tables = [
+            "CascadeTraces",
+            "CascadeSpikes",
+        ]
+        self.model_configs = model_configs
+
+        # to store the data
+        self.neuron_seed_mei_dict = None
+
+    def plot1(self,field_key: Dict[str,Any] = {}) -> None:
+
+        pass
+    
+    def plot_roi_overview(self, roi_keys: List[Dict[str, Any]]) -> None:
+        pass
+
+    
+    @property
+    def name(self) -> str:
+        return "Random Seed MEI"
+
+    def check_requirements(self, field_key) -> None:
+        """
+        Check if the required tables are populated in the database.
+        """
+        for table_name in self.requires_tables:
+            if len(self.dj_table_holder(table_name)() & field_key) == 0:
+                
+                # populate the necessary tables
+                self.dj_table_holder(table_name)().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+                sleep(self.dj_table_holder.sleep_time_between_table_ops)
+
+
+    def compute_analysis(self, field_key = {}) -> None:
+
+        # extract data in hoefling format from DB 
+        if len(self.dj_table_holder('OpenRetinaHoeflingFormat')() & field_key) == 0:
+
+            self.check_requirements(field_key)
+
+            session_dict_raw = self.dj_table_holder('OpenRetinaHoeflingFormat')().extract_data()
+            return session_dict_raw
+            # # preprocess and filter further 
+            # movies_dict = load_stimuli(self.model_configs)
+
+            # neuron_data_dict = preprocess_for_openretina(session_dict_raw)
+    
+            # # load and refine model
+            # model = train_model_online(self.model_configs,neuron_data_dict,movies_dict)
+            
+            # new_session_id = list(session_dict_raw.keys())[0]
+
+            # # for debug: check roi_id to neuron_id mapping
+            # neuron_ids_to_analyze = list(neuron_data_dict[new_session_id].keys())
+
+            # self.neuron_seed_mei_dict = generate_meis_with_n_random_seeds(
+            #                             model = model,
+            #                             new_session_id = new_session_id,
+            #                             random_seeds = [42],
+            #                             neuron_ids_to_analyze = neuron_ids_to_analyze, # NOTE: this will optimize each id individually 
+            #                             set_model_to_eval_mode = False, # model in training mode for noisy MEIs
+            #                         )
+            
+            
+
+
+
+
 
 
 class OpenRetinaWrapper:
@@ -849,6 +924,7 @@ class OpenRetinaWrapper:
             'Baden16Traces': Baden16Traces,
             'CelltypeAssignment': CelltypeAssignment,
             'CascadeTraceParams': CascadeTraceParams,
+
             'CascadeParams': CascadeParams,
             'CascadeTraces': CascadeTraces,
             'CascadeSpikes': CascadeSpikes,

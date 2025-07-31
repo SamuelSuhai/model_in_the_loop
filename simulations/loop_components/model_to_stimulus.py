@@ -51,7 +51,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 # TODO: move to configs
-stimulus_shape = (1, 2, 50, 18, 16)
+STIMULUS_SHAPE = (1, 2, 50, 18, 16)
 
 STIMULUS_RANGE_CONSTRAINTS = {
     "norm": 5.0,
@@ -61,15 +61,7 @@ STIMULUS_RANGE_CONSTRAINTS = {
     "x_max_uv": 6.269,
 }
 
-stimulus_postprocessor = ChangeNormJointlyClipRangeSeparately(
-    min_max_values=[
-        (STIMULUS_RANGE_CONSTRAINTS["x_min_green"], STIMULUS_RANGE_CONSTRAINTS["x_max_green"]),
-        (STIMULUS_RANGE_CONSTRAINTS["x_min_uv"], STIMULUS_RANGE_CONSTRAINTS["x_max_uv"]),
-    ],
-    norm=STIMULUS_RANGE_CONSTRAINTS["norm"],
-)
 
-response_reducer = SliceMeanReducer(axis=0, start=10, length=10)
 
 
 def load_pretrained_model(checkpoint_path: str) -> BaseCoreReadout:
@@ -77,8 +69,35 @@ def load_pretrained_model(checkpoint_path: str) -> BaseCoreReadout:
     model = load_core_readout_model(checkpoint_path,device=DEVICE, is_gru_model=is_gru_model)
     return model
 
+
+
+def generate_optimization_components(stimulus_range_constraints: Dict[str, float] = STIMULUS_RANGE_CONSTRAINTS,
+                                     reducer_axis: int= 0,
+                                     reducer_start: int = 10,
+                                     reducer_length: int = 10):
+    stimulus_postprocessor = ChangeNormJointlyClipRangeSeparately(
+    min_max_values=[
+        (stimulus_range_constraints["x_min_green"], stimulus_range_constraints["x_max_green"]),
+        (stimulus_range_constraints["x_min_uv"], stimulus_range_constraints["x_max_uv"]),
+    ],
+    norm=stimulus_range_constraints["norm"],
+    )
+
+    response_reducer = SliceMeanReducer(axis=reducer_axis, start=reducer_start, length=reducer_length)
+
+    return stimulus_postprocessor, response_reducer
+
+
+
+
 @time_it
-def generate_stimulus(model: BaseCoreReadout,new_sessoin_id:str,neuron_id: List[int] | int = 0) -> torch.Tensor:
+def generate_mei(model: BaseCoreReadout,
+                      new_sessoin_id:str,
+                      stimulus_postprocessor,
+                      response_reducer,
+                      stimulus_shape: tuple = STIMULUS_SHAPE,
+                      neuron_id: List[int] | int = 0, 
+                      ) -> torch.Tensor:
 
     # check if model params are on same device as stimulus
     if next(model.parameters()).device != DEVICE:
@@ -103,8 +122,44 @@ def generate_stimulus(model: BaseCoreReadout,new_sessoin_id:str,neuron_id: List[
     stimulus_regularization_loss=None,
     )
 
-
     return stimulus[0] # return first batch
+
+def generate_meis_with_n_random_seeds(
+    model: BaseCoreReadout,
+    new_session_id: str,
+    random_seeds: List = [42],
+    neuron_ids_to_analyze: List[int] = [0], # NOTE: this will optimize each id individually 
+    set_model_to_eval_mode: bool = False,
+) -> Dict[int, Dict[int, torch.Tensor]]:
+    """Generates a dictionary of MEIs for each neuron id and each random seed."""
+    
+    if set_model_to_eval_mode:
+        model.eval()
+    else:
+        if not model.training:
+            model.train()
+
+    # generate optimization components
+    stimulus_postprocessor, response_reducer = generate_optimization_components(
+        stimulus_range_constraints=STIMULUS_RANGE_CONSTRAINTS,
+        reducer_axis=0,
+        reducer_start=10,
+        reducer_length=10,
+    )
+    
+    all_meis = {neuron_id: {} for neuron_id in neuron_ids_to_analyze}
+    for neuron_id in neuron_ids_to_analyze:
+        for i,seed in enumerate(random_seeds):
+            single_neuron_seed_mei = generate_mei(model=model,
+                        new_sessoin_id = new_session_id,
+                        stimulus_postprocessor = stimulus_postprocessor,
+                        response_reducer = response_reducer,
+                        stimulus_shape= STIMULUS_SHAPE,
+                        neuron_id = neuron_id)
+                        
+            all_meis[neuron_id][seed] = single_neuron_seed_mei
+    return all_meis
+
 
 @time_it    
 def create_avi_from_tensor(stimulus: torch.Tensor, filename: str, fps: int = 50, original_stimulus_stats: Dict[str,float] | Any = None) -> None:
@@ -156,6 +211,7 @@ def create_avi_from_tensor(stimulus: torch.Tensor, filename: str, fps: int = 50,
 def train_model_online(cfg: DictConfig,
                        neuron_data_dict:Dict[str,ResponsesTrainTestSplit],
                        movies_dict:Dict[str,MoviesTrainTestSplit] | MoviesTrainTestSplit) -> BaseCoreReadout:
+    
     log.info("Logging full config:")
     log.info(OmegaConf.to_yaml(cfg))
 
@@ -263,21 +319,40 @@ def save_new_stimulus_position(new_session_id: str ,full_path: str,raw_neuron_da
     
     with open(full_path, "w") as f:
         yaml.dump(stim_metadata, f, default_flow_style=False)
-    
+
+def load_stimuli(or_config: DictConfig):
+
+    # are stmulus stats here???? ST WHAT PART IS CACHE_DIR NEEEDED???!!!
+    movies_dict: MoviesTrainTestSplit = hydra.utils.call(or_config.data_io.stimuli) 
+    return movies_dict
+   
+
 
 def from_data_to_mei_video(cfg: DictConfig, raw_neuron_data_dict:Dict[str,Dict[str,Any]],neuron_ids = 0):
 
-    openretina_cfg = cfg.model_configs
-    movies_dict: MoviesTrainTestSplit = hydra.utils.call(openretina_cfg.data_io.stimuli) # are stmulus stats here???? ST WHAT PART IS CACHE_DIR NEEEDED???!!!
+    movies_dict = load_stimuli(cfg.model_configs)
 
     neuron_data_dict = preprocess_for_openretina(raw_neuron_data_dict)
     
     # load and refine model
-    model = train_model_online(openretina_cfg,neuron_data_dict,movies_dict)
+    model = train_model_online(cfg.model_configs,neuron_data_dict,movies_dict)
     new_session_id = list(raw_neuron_data_dict.keys())[0]
 
-    new_stimulus = generate_stimulus(model,new_session_id,neuron_id=neuron_ids)
 
+    # generate optimization components
+    stimulus_postprocessor, response_reducer = generate_optimization_components(
+        stimulus_range_constraints=STIMULUS_RANGE_CONSTRAINTS,
+        reducer_axis=0,
+        reducer_start=10,
+        reducer_length=10,
+    )
+    new_stimulus = generate_mei(model=model,
+                      new_sessoin_id = new_session_id,
+                      stimulus_postprocessor = stimulus_postprocessor,
+                      response_reducer = response_reducer,
+                      stimulus_shape= STIMULUS_SHAPE,
+                      neuron_id = neuron_ids, 
+                      )
     save_new_stimulus_position(new_session_id,
                                full_path = os.path.join(cfg.paths.repo_directory, "data/stimuli",f"mei_{new_session_id}.yaml"),
                                raw_neuron_data_dict=raw_neuron_data_dict,
