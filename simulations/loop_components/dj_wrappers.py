@@ -5,7 +5,7 @@ import shutil
 import warnings
 warnings.simplefilter("ignore", FutureWarning)
 from time import sleep 
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Callable,Optional
 import numpy as np
 import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
@@ -492,6 +492,8 @@ class QualityAndTypeWrapper(DJComputeWrapper):
         if len(self.dj_table_holder('ChirpQI')() & field_key) == 0:
             
             self.dj_table_holder('ChirpQI')().populate(display_progress=True, processes=self.dj_table_holder.multiprocessing_threads)
+            
+        if len(self.dj_table_holder('OsDsIndexes')() & field_key) == 0:
             self.dj_table_holder('OsDsIndexes')().populate(display_progress=True, processes=self.dj_table_holder.multiprocessing_threads)
 
     def add_celltype_assignments(self, field_key) -> None:
@@ -501,18 +503,31 @@ class QualityAndTypeWrapper(DJComputeWrapper):
 
         if len(self.dj_table_holder('Baden16Traces')() & field_key) == 0:
             self.dj_table_holder('Baden16Traces')().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
-            sleep(self.dj_table_holder.sleep_time_between_table_ops)
-
+        
+        if len(self.dj_table_holder('CelltypeAssignment')() & field_key) == 0:
             self.dj_table_holder('CelltypeAssignment')().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
 
-    def compute_analysis(self, field_key = {}) -> None:
+    def compute_analysis(self, field_key = {},progress_callback: Optional[Callable]  = None) -> None:
         """
         Compute quality metrics and cell type assignment.
         """
+        if progress_callback is not None:
+            progress_callback(0)
+
         self.check_requirements(field_key)
+        if progress_callback is not None:
+            progress_callback(30)
 
         self.add_quality_metrics(field_key)
+        if progress_callback is not None:
+            progress_callback(60)
+
         self.add_celltype_assignments(field_key)
+        if progress_callback is not None:
+            progress_callback(100)
+
+
+
     
     @staticmethod
     def g_to_type_name(g: int) -> str:
@@ -542,7 +557,7 @@ class QualityAndTypeWrapper(DJComputeWrapper):
 
     # range mapping from quality index to alpha value 
     
-    def qi2alpha255(self,qi: float,alpha_min = 0.2,alpha_max = 0.8) -> float:
+    def qi2alpha255(self,qi: float,alpha_min = 0.1,alpha_max = 0.6) -> float:
         assert 0 <= qi <= 1, "Quality index must be between 0 and 1"
         return (alpha_min + (qi * (alpha_max - alpha_min))) * 255
 
@@ -592,6 +607,7 @@ class QualityAndTypeWrapper(DJComputeWrapper):
 
         single_averages_table = (self.dj_table_holder('Averages')() & field_key & {'roi_id': roi_id, 'stim_name': stim_name})
         snippets_table = self.dj_table_holder('Snippets')() & field_key
+
 
         snippets_t0, snippets_dt, snippets, triggertimes_snippets = (snippets_table & single_averages_table).fetch1(
             'snippets_t0', 'snippets_dt', 'snippets', 'triggertimes_snippets')
@@ -692,22 +708,31 @@ class STAWrapper(DJComputeWrapper):
     def name(self) -> str:
         return "STA"
     
-    def compute_analysis(self, field_key = {}) -> None:
+    def compute_analysis(self, field_key = {},progress_callback: Optional[Callable] = None) -> None:
         """
         Compute the STA analysis.
         """
         if len(self.dj_table_holder('STA')() & field_key) == 0:
-
+            if progress_callback is not None:
+                progress_callback(0)
+            
             self.dj_table_holder('DNoiseTrace')().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
             sleep(self.dj_table_holder.sleep_time_between_table_ops)
 
+            if progress_callback is not None:
+                progress_callback(30)
             self.dj_table_holder('STA')().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
             sleep(self.dj_table_holder.sleep_time_between_table_ops)
 
+            if progress_callback is not None:
+                progress_callback(80)
             self.dj_table_holder('SplitRF')().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
             sleep(self.dj_table_holder.sleep_time_between_table_ops)
 
             self.dj_table_holder('PeakSTAPosition')().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+
+            if progress_callback is not None:
+                progress_callback(100)
 
     def check_requirements(self, field_key) -> None:
         """
@@ -742,7 +767,10 @@ class STAWrapper(DJComputeWrapper):
 
 class RandomSeedMEIWrapper(DJComputeWrapper):
 
-    def __init__(self,dj_table_holder,model_configs,seeds: List[int]) -> None:
+    def __init__(self,dj_table_holder,
+                 model_configs,
+                 seeds: List[int],
+                ) -> None:
         
         self.dj_table_holder = dj_table_holder
 
@@ -764,6 +792,9 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
         self.seeds = seeds
         self.colors = plt.cm.nipy_spectral(np.linspace(0, 1,len(self.seeds))) 
+
+        # make sure openretina table is empty 
+        assert len(self.dj_table_holder('OpenRetinaHoeflingFormat')()) == 0, "OpenRetinaHoeflingFormat table is not empty. Please clear it before using this wrapper."
 
     def plot_seed_respones(self,neuron_id: int,ax: plt.Axes, optimization_window= (10,20),response_window = (21,50)):
         """
@@ -849,27 +880,31 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                 sleep(self.dj_table_holder.sleep_time_between_table_ops)
 
 
-    def compute_analysis(self, field_key = {}) -> None:
+    def compute_analysis(self, field_key = {},progress_callback: Optional[Callable] = None) -> None:
 
         # extract data in hoefling format from DB 
         if len(self.dj_table_holder('OpenRetinaHoeflingFormat')() & field_key) == 0:
+            if progress_callback is not None:
+                progress_callback(0)
 
             self.check_requirements(field_key)
 
+            if progress_callback is not None:
+                progress_callback(30)
             ## model training 
-            session_dict_raw = self.dj_table_holder('OpenRetinaHoeflingFormat')().extract_data()
+            self.session_dict_raw = self.dj_table_holder('OpenRetinaHoeflingFormat')().extract_data()
             
             # preprocess and filter further 
             movies_dict = load_stimuli(self.model_configs)
 
-            neuron_data_dict = preprocess_for_openretina(session_dict_raw,self.model_configs)
+            neuron_data_dict = preprocess_for_openretina(self.session_dict_raw,self.model_configs)
     
             # load and refine model
-            model = train_model_online(self.model_configs,neuron_data_dict,movies_dict)
+            self.model = train_model_online(self.model_configs,neuron_data_dict,movies_dict)
             
 
             ## MEI generatio 
-            new_session_id = list(session_dict_raw.keys())[0]
+            new_session_id = list(self.session_dict_raw.keys())[0]
 
             # for debug: check roi_id to neuron_id mapping
             self.rois_after_filtering: List[int] = neuron_data_dict[new_session_id].session_kwargs["roi_ids"].tolist()
@@ -877,8 +912,10 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             # the neuron_id is the index in the readout I think, so we need a mapping betwen roi_id and neuron_id
             neurons_ids_to_analyze = list(range(len(self.rois_after_filtering)))
 
+            if progress_callback is not None:
+                progress_callback(70)
             self.neuron_seed_mei_dict = generate_meis_with_n_random_seeds(
-                                        model = model,
+                                        model = self.model,
                                         new_session_id = new_session_id,
                                         random_seeds =self.seeds,
                                         neuron_ids_to_analyze = neurons_ids_to_analyze, # NOTE: this will optimize each id individually 
@@ -894,7 +931,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                 for seed,mei in seed_dict.items():
 
                     # responses 
-                    response = get_model_mei_response(model = model,
+                    response = get_model_mei_response(model = self.model,
                                                       mei=mei,
                                                       session_id = new_session_id,
                                                       neuron_id = neuron_id,)
@@ -907,7 +944,8 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                         "spatial_kernels": spatial_kernels,
                         "stimulus_time": stimulus_time,
                     }
-
+            if progress_callback is not None:
+                progress_callback(100)
 
 
 

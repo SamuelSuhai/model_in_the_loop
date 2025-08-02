@@ -300,7 +300,7 @@ def train_model_online(cfg: DictConfig,
 
     ## Model init
     load_model_path = cfg.paths.get("load_model_path")
-    # load_model_path = "/gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/outputs/2025-05-30/17-34-53/checkpoints/epoch=08_val_correlation=0.333.ckpt"
+    
     log.info(f"Loading model from <{load_model_path}>")
     is_gru_model = "gru" in cfg.model._target_.lower() if hasattr(cfg.model, "_target_") else False
     model = load_core_readout_model(load_model_path, DEVICE, is_gru_model=is_gru_model)

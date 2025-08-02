@@ -113,7 +113,7 @@ class RoiCanvasData:
         self._selected_thresh = 0.3
 
         self.alpha_bg = 200. / 255
-        self.alpha_hl = 150. / 255
+        self.alpha_hl = 220. / 255 # changed from 150.
         self.alpha_ft = 50. / 255
 
         self.backgrounds = self.compute_backgrounds()
@@ -431,7 +431,7 @@ class InteractiveRoiCanvas(RoiCanvasData):
         self.roi_mask_table = table_holder_info['roi_mask_table']
         self.roi_table = self.dj_table_holder('Roi')
 
-        self.debug_mode = True  # Set
+        self.debug_mode = False  # Set
 
         # Pause all drawing
         self.draw_updates = False
@@ -632,6 +632,11 @@ class InteractiveRoiCanvas(RoiCanvasData):
         controls = HBox([
             HTML("<h3>Analysis Controls</h3>"),
             self.widget_analysis_type,
+        ],layout=Layout(width="auto"))
+
+        # The progress bar
+        progress_section = HBox([
+            self.widget_progress
         ])
 
         # Analysis display area
@@ -640,7 +645,7 @@ class InteractiveRoiCanvas(RoiCanvasData):
         ])
 
         # Return the complete layout
-        return VBox([controls, plots,self.log_widget])
+        return VBox([controls,progress_section,plots,self.log_widget])
 
     def start_gui(self):
 
@@ -658,6 +663,7 @@ class InteractiveRoiCanvas(RoiCanvasData):
             dynamic_content = self.create_analysis_layout()
 
             # start the set analysis
+            self.log(f" From start_gui mehtod calling on_analysis_type_change with {self._selected_analysis_type}")
             self.on_analysis_type_change({'new': self._selected_analysis_type})
 
         self.container = HBox([
@@ -874,15 +880,13 @@ class InteractiveRoiCanvas(RoiCanvasData):
         return widget_exec_autorois
 
     def exec_autorois_all(self, button=None):
+        
         self.log(f'Executing autorois for current stacks')
-
-        if len(self.roi_mask_table) > 0:
-            warnings.warn("There already is a ROI mask in the DB, which will control downstream analysis\
-                           but the GUI will display the new mask. Delete the DB roi mask to avoid weird stuff.")
 
         self._exec_autorois(missing_only=False, all_stimuli=False)
 
     def exec_autorois_all_stacks(self, button=None):
+        
         self.log(f'Executing autorois for all stacks')
         self._exec_autorois(missing_only=False, all_stimuli=True)
 
@@ -1471,11 +1475,23 @@ class InteractiveRoiCanvas(RoiCanvasData):
 
             if self._selected_mode == 'ROI Editor':
                 dynamic_content = self.create_roi_tool_layout()
+            
             else:
                 dynamic_content = self.create_analysis_layout()
+                self.log(f"on_mode_change: selected analysis type is {self._selected_analysis_type}")
 
             # Update container directly with the components
             self.container.children = [persistent_header, dynamic_content]
+
+            # Call the analysis type change because we switch modes. this also consists a type change.
+            if self._selected_mode == 'Analysis View':
+  
+                # trigger the setps associated with a new analyis type
+                self.on_analysis_type_change({'new': self._selected_analysis_type})
+                
+
+
+
 
     def on_analysis_type_change(self, value):
         """
@@ -1488,12 +1504,12 @@ class InteractiveRoiCanvas(RoiCanvasData):
         # display in the analysis_plot that the analysis is being computed
         with self.analysis_plot:
             clear_output(wait=True)
-            print(f'Preparing or computing {self._selected_analysis_type} analysis...')
+            print(f'Computing analysis for {self._selected_analysis_type}...')
 
 
-        # update the analysis plot with the data we got
+        # Update the analysis plot with the data we got
         self.update_analysis_plot()
-
+        
         # change roi coloring
         if hasattr(self.dj_wrappers_dict[self._selected_analysis_type],'get_roi2rgb_and_alpha_255_map') and not hasattr(self, 'roi2rgb255_map'):
             self.log(f'Got roi2rgba_map for {self._selected_analysis_type}')
@@ -1506,11 +1522,15 @@ class InteractiveRoiCanvas(RoiCanvasData):
 
 
 
+
     def update_analysis_plot(self):
         """Compute (if not already done) update the anslysis plot for when when changing modes and analysis type and ROIs"""
         # call the compute function. Checking whether its already computed is done in the wrapper
 
-        self.dj_wrappers_dict[self._selected_analysis_type].compute_analysis(field_key = self.field_key)
+        self.dj_wrappers_dict[self._selected_analysis_type].compute_analysis(
+            field_key = self.field_key,
+            progress_callback=self.update_progress  # Pass the update_progress method as callback
+        )
 
         with self.analysis_plot:
             clear_output(wait=True)
@@ -1655,13 +1675,14 @@ class InteractiveRoiCanvas(RoiCanvasData):
         return stim, condition
 
     def check_databse_for_mask(self) ->None:
+        # TODO: Implement a check for the database to see if the mask already exists
+        pass
 
-
-        self.init_roi_mask(roi_mask_new)
-        self.update_info()
-        self.update_roi_options()
-        self.draw_current_mask_img(update=True)
-        self.draw_roi_masks_img(update=True)
+        # self.init_roi_mask()
+        # self.update_info()
+        # self.update_roi_options()
+        # self.draw_current_mask_img(update=True)
+        # self.draw_roi_masks_img(update=True)
 
     def insert_database_and_get_traces(self):
         """Inserts ROI mask into DB and calls on the preporcessor to compute the traces, necessar for further analysis"""
@@ -1841,9 +1862,6 @@ def compute_brush_mask(rad):
     brush_mask = mask_utils.create_circular_mask(
         w=rad * 2 - 1, h=rad * 2 - 1, center=(rad - 1, rad - 1), radius=rad - 1)
     return brush_mask
-
-
-
 
 
 

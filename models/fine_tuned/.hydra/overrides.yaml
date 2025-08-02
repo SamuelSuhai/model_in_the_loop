@@ -1,0 +1,3 @@
+- paths.load_model_path='/gpfs01/euler/User/ssuhai/GitRepos/other/MITL_applications/openretina_assets/runs/hoefling_2024_core_readout_low_res_filtered/missing_first/checkpoints/epoch=41_val_correlation=0.250.ckpt'
+- paths.responses_path=/gpfs01/euler/User/ssuhai/GitRepos/other/MITL_applications/data/rgc_natstim_first_only.h5
+- only_train_readout=true
