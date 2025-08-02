@@ -113,7 +113,7 @@ class RoiCanvasData:
         self._selected_thresh = 0.3
 
         self.alpha_bg = 200. / 255
-        self.alpha_hl = 220. / 255 # changed from 150.
+        self.alpha_hl = 255. / 255 # changed from 150.
         self.alpha_ft = 50. / 255
 
         self.backgrounds = self.compute_backgrounds()
@@ -608,7 +608,7 @@ class InteractiveRoiCanvas(RoiCanvasData):
                 HBox((self.widget_bg, self.widget_gamma, self.widget_cmap)),
                 HBox((self.widget_auto_shift, self.widget_shift_dx, self.widget_shift_dy)),
                 self.widget_progress,
-            ), layout=Layout(width=f'{100 - self.canvas_width}%'))
+            ))
 
         w_other_tools = VBox((
                 HBox((self.widget_clean, self.widget_save_all_to_file, self.widget_save_to_file, self.widget_insert_database_and_get_traces)),
@@ -618,7 +618,7 @@ class InteractiveRoiCanvas(RoiCanvasData):
 
         all_tool_widgets = VBox([w_tools, self.log_widget,
                                  HBox((self.widget_show_diagnostics, self.widget_pause_draw)),
-                                 self.widget_diagnostics, w_other_tools])
+                                 self.widget_diagnostics, w_other_tools],layout=Layout(width=f'{100 - self.canvas_width}%'))
 
         return all_tool_widgets
 
@@ -632,7 +632,7 @@ class InteractiveRoiCanvas(RoiCanvasData):
         controls = HBox([
             HTML("<h3>Analysis Controls</h3>"),
             self.widget_analysis_type,
-        ],layout=Layout(width="auto"))
+        ])
 
         # The progress bar
         progress_section = HBox([
@@ -645,7 +645,7 @@ class InteractiveRoiCanvas(RoiCanvasData):
         ])
 
         # Return the complete layout
-        return VBox([controls,progress_section,plots,self.log_widget])
+        return VBox([controls,progress_section,plots,self.log_widget],layout =Layout(width=f'{100 - self.canvas_width}%'))
 
     def start_gui(self):
 

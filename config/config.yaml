@@ -62,7 +62,7 @@ paths:
   home_directory: /gpfs01/euler/User/ssuhai
   dj_config_directory: datajoint 
   rgc_output_directory: datajoint/rgc_classifier # dir where classifier should be stored
-  recording_files_dir: /gpfs01/euler/data/Data/Suhai/move_closed_loop_data_here
+  recording_files_dir: /gpfs01/euler/data/Data/Suhai/test_data_klaudia 
   dummy_ini_dir: data/dummy_ini/
 
 debug: False

@@ -596,8 +596,24 @@ class QualityAndTypeWrapper(DJComputeWrapper):
         return text
 
 
+    def plot_g_name_legend(self, ax, y_start=0.05, fontsize=10):
+        """
+        Plots a legend mapping g_name to RGB color below the text area,
+        with rectangles drawn just before the labels.
+        """
+        y_step = 0.07
+        rect_x = 0.05  # x-position for rectangles
+        text_x = rect_x + 0.07  # x-position for text, just after rectangle
 
-
+        for i, (g_name, rgb) in enumerate(self.g_name_to_rgb255.items()):
+            color = tuple(rgb / 255)
+            y = y_start + i * y_step
+            # Draw colored rectangle
+            ax.add_patch(plt.Rectangle((rect_x, y), 0.06, 0.05, color=color, transform=ax.transAxes, clip_on=False))
+            # Draw label just after rectangle
+            ax.text(text_x, y + 0.025, f"{g_name}", fontsize=fontsize, color='black',
+                    verticalalignment='center', horizontalalignment='left', transform=ax.transAxes)
+        
     def plot1(self, roi_id, stim_name= "gChirp", field_key = {}, xlim=None,show_fig = True) -> None:
         """
         Plot the Averages of the requested roi.
@@ -646,6 +662,9 @@ class QualityAndTypeWrapper(DJComputeWrapper):
                     verticalalignment='top', horizontalalignment='left',
                     transform=text_ax.transAxes)
         
+        # add colors for g_name
+        self.plot_g_name_legend(text_ax, y_start=0.05, fontsize=10)
+
         # set tite
         fig.suptitle(f"ROI {roi_id} - {stim_name}", fontsize=16)
         
@@ -758,11 +777,6 @@ class STAWrapper(DJComputeWrapper):
         # plot it and 
         restricted_split_rf.plot1()
 
-        # set title to roi 
-        plt.gcf().suptitle(f"SplitRF for ROI {roi_id}", fontsize=16)
-
-
-
 
 
 class RandomSeedMEIWrapper(DJComputeWrapper):
@@ -849,7 +863,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         # plot temporal kernels in a line plot
         fig,axs = plt.subplots(1,2,figsize=(10, 5))
         self.plot_temporal_kernels(neuron_id, ax=axs[0])
-        axs[0].set_title(f"Temporal Kernels for Neuron {neuron_id} (ROI {roi_id})")
+        axs[0].set_title(f"Temporal Kernels for ROI {roi_id} (neuron idx {neuron_id})")
 
     
 
@@ -868,16 +882,26 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
     def name(self) -> str:
         return "Random Seed MEI"
 
-    def check_requirements(self, field_key) -> None:
+    def check_requirements(self, field_key, progress_callback: Optional[Callable]) -> None:
         """
         Check if the required tables are populated in the database.
         """
+
+        progress: int = 0 
+        
+        if progress_callback is not None:
+            progress_callback(0)
+
         for table_name in self.requires_tables:
             if len(self.dj_table_holder(table_name)() & field_key) == 0:
                 
                 # populate the necessary tables
                 self.dj_table_holder(table_name)().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
                 sleep(self.dj_table_holder.sleep_time_between_table_ops)
+
+                progress += 15
+                if progress_callback is not None:
+                    progress_callback(progress)
 
 
     def compute_analysis(self, field_key = {},progress_callback: Optional[Callable] = None) -> None:
