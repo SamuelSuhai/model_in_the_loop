@@ -17,7 +17,7 @@ def copy_stim_files(recording_files_dir: str,
                     destination_base: str, 
                     date: int, 
                     experiment: int,
-                    permissible_stimulus_types: List[str] = ["chirp","dn","mb","mc"],
+                    permissible_stimulus_types: List[str] = ["chirp","dn","mb"] + [f"mc{str(i)}" for i in range(0,21)],
                     full_dummy_ini_dir: Optional[str] = None,
                     ) -> None:
     """

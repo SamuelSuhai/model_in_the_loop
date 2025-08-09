@@ -911,7 +911,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             if progress_callback is not None:
                 progress_callback(0)
 
-            self.check_requirements(field_key)
+            self.check_requirements(field_key,progress_callback= progress_callback)
 
             if progress_callback is not None:
                 progress_callback(30)

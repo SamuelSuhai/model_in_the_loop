@@ -17,7 +17,7 @@ DJ:
     field_loc: 3
     stimulus_loc: 4
     cond1_loc: 5
-    data_dir: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/updated_loop_data
+    data_dir: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/first_closed_loop_experiment
 
   table_parameters:
     # for the DJ tables 
