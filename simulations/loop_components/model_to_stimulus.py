@@ -147,7 +147,7 @@ def decompose_mei(stimulus: np.ndarray, frame_rate_model: float = 30.0) -> Tuple
 
 def get_model_mei_response(model: BaseCoreReadout, mei: torch.Tensor, session_id: str, neuron_id: int) -> np.ndarray:
     
-    # check if mei correct shape of b,c,t,w,h
+    # check if mei correct shape of b,c,t,h,w
     if mei.ndim == 4:
         mei = mei.unsqueeze(0)
     
@@ -209,51 +209,6 @@ def generate_meis_with_n_random_seeds(
     return all_meis
 
 
-@time_it    
-def create_avi_from_tensor(stimulus: torch.Tensor, filename: str, fps: int = 50, original_stimulus_stats: Dict[str,float] | Any = None) -> None:
-    """Crates an AVI file from toch.Tensor stimulus and saves it at `filename`"""
-    import numpy as np
-    import cv2
-    assert len(stimulus.shape) == 4, "Stimulus tensor must be of shape (C,T,H,W)"
-    stimulus = stimulus.detach().cpu()
-
-    # put back to same space as original stimulus
-    if original_stimulus_stats is not None:
-        stimulus = stimulus * original_stimulus_stats["std"] + original_stimulus_stats["mean"]
-    else:
-        # simply map to [0,255] 
-        min_val = torch.min(stimulus)
-        max_val = torch.max(stimulus)
-        stimulus = 255 * (stimulus - min_val) / (max_val - min_val)
-   
-    # open cv2 expects the stimulus in (T, H, W, C) format
-    stimulus_np = stimulus.numpy()
-    stimulus_np = np.transpose(stimulus_np, (1, 2, 3, 0)).astype(np.uint8)
-
-    frames, height, width, channels = stimulus_np.shape
-
-    rgb_frames = np.zeros((frames, height, width, 3), dtype=np.uint8)
-    # Map channel 0 to green and channel 1 to blue (UV)
-    rgb_frames[:, :, :, 1] = stimulus_np[:, :, :, 0]  # Green channel
-    rgb_frames[:, :, :, 2] = stimulus_np[:, :, :, 1]  # Blue channel (for UV)
-    stimulus_np = rgb_frames
-    
-    # Create video writer
-    fourcc = cv2.VideoWriter_fourcc(*'XVID')  # type : ignore # Use XVID codec 
-    out = cv2.VideoWriter(filename, fourcc, fps, (width, height), isColor=True)
-    
-    # Write frames
-    for i in range(frames):
-        frame = stimulus_np[i]
-        # OpenCV uses BGR format
-        if frame.shape[-1] == 3:  # RGB to BGR
-            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR) # type: ignore
-        out.write(frame)  # type: ignore
-     
-    # Release resources
-    out.release()
-
-    log.info(f"AVI file saved as {filename}")
 
 @time_it
 def train_model_online(cfg: DictConfig,
@@ -406,11 +361,6 @@ def from_data_to_mei_video(cfg: DictConfig, raw_neuron_data_dict:Dict[str,Dict[s
                                raw_neuron_data_dict=raw_neuron_data_dict,
                                neuron_id=neuron_ids)
 
-    create_avi_from_tensor(
-        new_stimulus,
-        filename=os.path.join(cfg.paths.repo_directory, "data/stimuli",f"mei_{new_session_id}.avi"),
-        original_stimulus_stats=None,
-    )
 
 
 

@@ -1,141 +1,148 @@
-import os
-import glob
+import os 
 import shutil
-from time import sleep
-import numpy as np  
+import glob 
+from typing import List, Optional   
 
-class RecordingFileCopier:
+
+def create_directory_structure(base_directory: str,date: int ,experiment: int,):
+    """Creates folder structure for DJ"""
+
+    for subfolder in ["Raw","Pre"]:
+        to_create = os.path.join(base_directory,str(date),str(experiment),subfolder)
+        os.makedirs(to_create, exist_ok=True)
+
+
+
+def copy_rec_files(recording_files_dir: str,
+                    destination_base: str, 
+                    date: int, 
+                    experiment: int,
+                    permissible_stimulus_types: List[str] = ["chirp","dn","mb"] + [f"mc{str(i)}" for i in range(0,21)],
+                    full_dummy_ini_dir: Optional[str] = None,
+                    ) -> None:
     """
-    Coplies smp smh and ini filed to an experiment dir to simulate new data coming in with each loop iteration
-    The fiels are renamed to make each loop iteration a uniqule level of cond1.
+    Copies all smp, smh and ini files from recording dir to a dir structure that one can use in DJ.
     """
+    all_files_in_dir = os.listdir(recording_files_dir)
 
-    def __init__(self,
-                 repo_directory: str, 
-                 stimulus_type: str,
-                 sleep_time_between_file_ops: float = 0.1,
-                 debug: bool = True,
-                 ) -> None:
+
+    # filter files
+    filtered_files_in_dir = []
+    for filename in all_files_in_dir:
+
+        # wrong ending 
+        if not filename.endswith(('.smp', '.smh', '.ini')):
+            continue
         
+        # Check if the file is a permissible stimulus type
+        file_info_list = filename.split('.')[0].split('_')
+        file_info_list = [info.lower() for info in file_info_list]  # Normalize to lowercase
+        if not any(stimulus_type in file_info_list for stimulus_type in permissible_stimulus_types):
+            print(f"SKIPPING File {filename}: does not match any permissible stimulus type.")
+            continue
+
+        filtered_files_in_dir.append(filename)
+
+    
+
+    for filename in filtered_files_in_dir:
+
+        if not os.path.isfile(os.path.join(recording_files_dir, filename)):
+            continue
+
+
+        # Get the full source path when needed
+        source_file = os.path.join(recording_files_dir, filename)
         
-        self.repo_directory: str = repo_directory
-        self.stimulus_type: str = stimulus_type
-        self.sleep_time_between_file_ops: float = sleep_time_between_file_ops
-        self.debug: bool = debug
-        
-        # name of experiment directory
-        self.exp_num: str = str(1)
-        self.exp_date: str = '20250412'
-        self.new_file_name_base: str = "M1_LR_GCL0"
-        self.stimulus_name_to_abbreviation: dict = {
-            "closedloopdensenoise": "cldn",
-            "closedloopmousecamera": "clmc",
-            "closedloopchirp": "clchirp",
-        }
-        assert self.stimulus_type in self.stimulus_name_to_abbreviation.keys(), f"Stimulus type {self.stimulus_type} not in {self.stimulus_name_to_abbreviation.keys()}."
 
-        self.iteration: int = 0
-
-
-        # where to find files
-        self.source_dir = os.path.join( self.repo_directory, 'data','recordings','static_test_data')
-        assert os.path.exists(self.source_dir), f"Source directory {self.source_dir} does not exist."
-
-        # store where to find the smp smh and ini files for a certain stimulus type
-        self.ini_file, self.source_smp_file, self.source_smh_file = '','',''
-        for file in os.listdir(self.source_dir):
-            if self.stimulus_type in file:
-                if file.endswith('.smp'):
-                    self.source_smp_file: str = file
-                elif file.endswith('.smh'):
-                    self.source_smh_file: str = file
-            elif file.endswith('.ini'):
-                self.ini_file : str = file
-        assert self.source_smp_file != '', f"Source directory {self.source_dir} does not contain any smp file for stimulus type {self.stimulus_type}."
-        assert self.source_smh_file != '', f"Source directory {self.source_dir} does not contain any smh file for stimulus type {self.stimulus_type}."
-        assert self.ini_file != '', f"Source directory {self.source_dir} does not contain any ini file{self.stimulus_type}."
-               
-
-        # where to create experiment dir and subdirs and copy files to
-        self.target_dir: str = os.path.join(self.repo_directory, 'data','recordings','updated_loop_data',self.exp_date)
-        if not os.path.exists(self.target_dir):
-            os.mkdir(self.target_dir)
+        # Split filename and extension
+        name_parts = filename.split('.')
+        if len(name_parts) < 2:
+            continue  # Skip files without extensions
             
-
+        stim_file, ending = name_parts[0], name_parts[1]
+     
         
-
-    def create_experiment_dir_structure(self) -> None:
-        """
-        create Experiment directory structure
-        """
-
-        # create experiment dir
-        try:
-            os.mkdir(os.path.join(self.target_dir, self.exp_num))
-        except FileExistsError:
-            print(f"Experiment directory {self.exp_num} already exists. Cleaning up.")
-            self.clean_up()
-            os.mkdir(os.path.join(self.target_dir, self.exp_num))
-
-        # subdirs for stimuli and raw data
-        os.mkdir(os.path.join(self.target_dir, self.exp_num, "Pre"))
-        os.mkdir(os.path.join(self.target_dir, self.exp_num, "Raw"))
-
-    def copy_ini(self) -> None:
-        """
-        copy ini file to the target directory structure of the experiment
-        """
-        source_path = os.path.join(self.source_dir, self.ini_file)
-        target_path = os.path.join(self.target_dir, self.exp_num,self.ini_file)
-        shutil.copy(source_path, target_path)
-
-
-    def copy_to_dir_structure(self) -> None:
-        """
-        copy files to the target directory structure of the experiment. It renames them such that
-        the stimulus is at loc 4 and the loop iteration is at loc 5 of the filename.
-        """
-        stimulus_abbreviation = self.stimulus_name_to_abbreviation[self.stimulus_type]
-        new_file_full_name_woending = f'{self.new_file_name_base}_{stimulus_abbreviation}{self.iteration}_iter{self.iteration}'
-        
-        for sourcefilename in [self.source_smp_file, self.source_smh_file]:
-            _, ext = os.path.splitext(sourcefilename)
-            # copy the file to the target directory
-            source_path = os.path.join(self.source_dir, sourcefilename)
-            target_path = os.path.join(self.target_dir, self.exp_num, "Raw", new_file_full_name_woending + ext)
-            shutil.copy(source_path, target_path)
-
- 
-    def clean_up(self) -> None:
-        """
-        clean up the experiment directory and set instance back to initial state
-        """
-        # remove the experiment directory
-        if self.debug:
-            user_input = input(f"removing experiment directory {self.exp_num} from {self.target_dir}.\nEnter 'yes' to continue.'yes' to continue.")
-            if user_input == "yes":
-                shutil.rmtree(os.path.join(self.target_dir, self.exp_num))
-            else:
-                raise ValueError(f"User input {user_input} is not 'yes'.")
+        # first deal with smp and smh files 
+        if ending in ["smp", "smh"]:
+            new_stim_file = stim_file + "_iter0" if not "iter" in stim_file else stim_file
+            new_path_full = os.path.join(destination_base, str(date), str(experiment), "Raw", new_stim_file + "." + ending)
+        elif ending == "ini":
+            new_path_full = os.path.join(destination_base,str(date), str(experiment),stim_file + "." + ending)
         else:
-            shutil.rmtree(os.path.join(self.target_dir, self.exp_num))
+            raise ValueError(f"Unknown file ending {ending} for file {filename}")
+        
+        # check if file already exists
+        if os.path.exists(new_path_full):
+            print(f"SKIPPING File {new_path_full} already exists, skipping.")
+            continue
+
+        # Copy the files with different endings
+        shutil.copy(source_file, new_path_full)
+        print(f"COPIED file from {source_file} to {new_path_full}")
+    
+
+    # deal with the case of missing ini file
+    has_ini_file = any(file.endswith('.ini') for file in filtered_files_in_dir)
+    
+    if not has_ini_file:
+
+        if full_dummy_ini_dir is None:
+            raise ValueError("full_dummy_ini_dir must be provided if no ini file is found")
+
+        full_dummy_ini_file_path = os.path.join(full_dummy_ini_dir, "dummy.ini")
+        dummy_ini_dest = os.path.join(destination_base, str(date), str(experiment), f"{str(date)}_left.ini")
+
+        shutil.copy(full_dummy_ini_file_path, dummy_ini_dest)
+        print(f"NO INI FILE found.\nCOPIED dummy ini file from {full_dummy_ini_file_path} to {dummy_ini_dest}")
+
+class StimulusFileCopier:
+
+    permissible_stimulus_types = ["closedloopdensenoise", "closedloopmousecamera","closedloopchirp"]
+
+    def __init__(self, 
+                repo_directory,
+                stimulus_type: str,
+                debug: bool = True,
+   ):   
+        if not stimulus_type in self.permissible_stimulus_types:
+            raise ValueError(f"stimulus_type must be one of {self.permissible_stimulus_types}")
+        
+        self.stimulus_type = stimulus_type
+        self.repo_directory = repo_directory
+        self.source_path = os.path.join(repo_directory, 'data', 'stimuli','static_test_data',stimulus_type + '.h5')
+        self.dir_where_new_stim_appear = os.path.join(repo_directory, 'data', 'stimuli','updated_loop_data')
 
         self.iteration = 0
-
-    def record(self) -> None:
-        '''
-        This simulates the recroding process. 
-    
-        '''
-
-        if self.iteration == 0:
-            # copy ini file into experiment dir
-            self.create_experiment_dir_structure()
-            self.copy_ini()
-        sleep(self.sleep_time_between_file_ops)
-
-        self.copy_to_dir_structure()
-        sleep(self.sleep_time_between_file_ops)
         
+        if not os.path.exists(self.source_path):
+            raise FileNotFoundError(f"Source path {self.source_path} does not exist")
+        
+        os.makedirs(self.dir_where_new_stim_appear, exist_ok=True)
+        self.debug = debug
+        
+        if os.listdir(self.dir_where_new_stim_appear) != []:
+            self.clean_up()
+
+    def stimulate(self):
+
+        destination_path = self.dir_where_new_stim_appear + f"/{self.stimulus_type}{self.iteration}.h5"
+        shutil.copy(self.source_path, destination_path)
+        if self.debug:
+            print(f"Copied noise file from {self.source_path} to {destination_path}")
         self.iteration += 1
-          
+
+    def clean_up(self):
+        """
+        clean up the destination directory
+        """
+
+        for file in os.listdir(self.dir_where_new_stim_appear):
+            if file.endswith(".h5"):
+                os.remove(self.dir_where_new_stim_appear + f"/{file}")
+                if self.debug:
+                    print(f"Removed {file} from {self.dir_where_new_stim_appear}")
+            else:
+                if self.debug:
+                    print(f"File {file} is not a .h5 file, skipping")
+        self.iteration = 0 

@@ -8,7 +8,7 @@ from typing import List, Dict, Any
 # from simulations.loop_components.stimulus_file_copier import StimulusFileCopier
 # from simulations.loop_components.recording_file_copier import RecordingFileCopier
 from loop_components.dj_wrappers import OpenRetinaWrapper
-from loop_components.stimulus_file_copier import copy_stim_files,create_directory_structure
+from simulations.loop_components.recording_file_copier import copy_rec_files,create_directory_structure
 from loop_components.model_to_stimulus import from_data_to_mei_video
 from time import sleep
 
@@ -58,7 +58,7 @@ def run_simulation(cfg: DictConfig) -> None:
 
     # create_directory_structure(cfg.DJ.userinfo.data_dir, cfg.data_subfolders.day, cfg.data_subfolders.experiment)
     # print("Copying recording files to repo ... ")
-    # copy_stim_files(
+    # copy_rec_files(
     #     recording_files_dir=cfg.paths.recording_files_dir,  # type: ignore
     #     destination_base=cfg.DJ.userinfo.data_dir,  # type: ignore
     #     date=cfg.data_subfolders.day,  # type: ignore
