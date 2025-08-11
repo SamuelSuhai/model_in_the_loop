@@ -248,10 +248,7 @@ class DJTableHolder:
 
         
         self('Stimulus')().add_noise(**self.table_parameters.Stimulus.noise, stim_trace=noise_stimulus,)
-        
-        # self('Stimulus')().update1(dict(stim_name='densnoise',stim_family='noise', 
-        #               stim_dict=dict( pix_scale_x_um=40, pix_scale_y_um=40, pix_n_x=20, pix_n_y=15, framerate = 5)))
-        
+            
         self('Stimulus')().add_movingbar(skip_duplicates=True)
         
         self('Stimulus')().add_stimulus(
