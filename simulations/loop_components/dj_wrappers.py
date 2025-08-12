@@ -765,14 +765,39 @@ class STAWrapper(DJComputeWrapper):
     def plot_roi_overview(self, roi_keys: List[Dict[str, Any]]) -> None:
         pass
         
-    def plot1(self,roi_id: int,field_key={}) -> None:
+    def plot1(self,roi_id: int,field_key={},show = True) -> None:
 
         restricted_split_rf = (self.dj_table_holder('SplitRF')() & field_key & {'roi_id': roi_id})
 
         assert len(restricted_split_rf) == 1, f"Expected exactly one SplitRF for roi_id {roi_id}, found {len(restricted_split_rf)}"
 
         # plot it and 
-        restricted_split_rf.plot1()
+        key = get_primary_key(table=restricted_split_rf, key=None)
+
+        rf_time = restricted_split_rf.fetch1_rf_time(key=key)
+        srf, trf, peak_idxs = (restricted_split_rf & key).fetch1("srf", "trf", "trf_peak_idxs")
+
+        fig, axs = plt.subplots(1, 2, figsize=(8, 3), sharex='col')
+
+        ax = axs[0]
+        plot_utils.plot_srf(srf, ax=ax)
+        ax.set_title(f'sRF for ROI {roi_id}')
+
+        # add x mark at the peak position in index coordinates
+        x,y = self.dj_table_holder("PeakSTAPosition")().get_rf_spatial_max_indices(srf)
+        
+        # flip x and y becaus in QDSpy dense noise the axis 0 is x so I called it x but its axis 0. 
+        ax.plot(y,x, 'x', color='black', markersize=10, label='Peak Position')
+        ax.legend()
+
+        ax = axs[1]
+        plot_utils.plot_trf(trf, t_trf=rf_time, peak_idxs=peak_idxs, ax=ax)
+
+        if show:
+            plt.show()
+
+
+
 
 
 
@@ -795,6 +820,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         self.neuron_seed_mei_dict = {}
         self.neuron_seed_mei_responses = {}
         self.neuron_seed_decomposed_meis = {}
+        self.model = None
 
         # these are the roi ids that were kept after filtering
         self.rois_after_filtering: List[int] = []

@@ -1698,23 +1698,27 @@ class InteractiveRoiCanvas(RoiCanvasData):
         main_roi_mask = pres_and_roi_mask[self.main_stim_idx][1]
         new_key = {**self.field_key, **self.pres_names[self.main_stim_idx], "roi_mask": main_roi_mask}
 
-        self.roi_mask_table.insert1(new_key,skip_duplicates=True)
-        for i, (pres_key, roi_mask) in enumerate(pres_and_roi_mask):
-            new_key = {**self.field_key, **pres_key, "roi_mask": roi_mask}
+        try:
+            self.roi_mask_table.insert1(new_key,skip_duplicates=True)
+            for i, (pres_key, roi_mask) in enumerate(pres_and_roi_mask):
+                new_key = {**self.field_key, **pres_key, "roi_mask": roi_mask}
 
-            as_field_mask, (shift_dx, shift_dy) = compare_roi_masks(roi_mask, main_roi_mask, max_shift=self.max_shift)
-            new_key['as_field_mask'] = as_field_mask
-            new_key['shift_dx'] = shift_dx
-            new_key['shift_dy'] = shift_dy
+                as_field_mask, (shift_dx, shift_dy) = compare_roi_masks(roi_mask, main_roi_mask, max_shift=self.max_shift)
+                new_key['as_field_mask'] = as_field_mask
+                new_key['shift_dx'] = shift_dx
+                new_key['shift_dy'] = shift_dy
 
-            self.roi_mask_table.RoiMaskPresentation().insert1(new_key)
+                self.roi_mask_table.RoiMaskPresentation().insert1(new_key)
 
-        # compute the rois
-        self.log(f'Inserting {len(pres_and_roi_mask)} ROI masks into database')
-        self.dj_preprocessor.add_iteration_rois()
+            # compute the rois
+            self.log(f'Inserting {len(pres_and_roi_mask)} ROI masks into database')
+            self.dj_preprocessor.add_iteration_rois()
 
-        self.log(f'Getting traces for  {len(pres_and_roi_mask)} ROI masks into database')
-        self.dj_preprocessor.add_iteration_traces()
+            self.log(f'Getting traces for  {len(pres_and_roi_mask)} ROI masks into database')
+            self.dj_preprocessor.add_iteration_traces()
+        except Exception as e:
+            warnings.warn(f"Error occurred. If Duplicate error click delete from DB and try again: {e}")
+
 
 
     def create_widget_roi_next(self):

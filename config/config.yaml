@@ -17,7 +17,7 @@ DJ:
     field_loc: 3
     stimulus_loc: 4
     cond1_loc: 5
-    data_dir: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/test_rfs #/gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/first_closed_loop_experiment
+    data_dir: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/test_rfs # #/gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/first_closed_loop_experiment 
 
   table_parameters:
     # for the DJ tables 
@@ -62,7 +62,8 @@ paths:
   home_directory: /gpfs01/euler/User/ssuhai
   dj_config_directory: datajoint 
   rgc_output_directory: datajoint/rgc_classifier # dir where classifier should be stored
-  recording_files_dir: /gpfs01/euler/data/Data/Suhai/move_closed_loop_data_here 
+  recording_files_dir: /gpfs01/euler/data/Data/Suhai/move_closed_loop_data_here # /gpfs01/euler/data/Data/Suhai/test_data_klaudia  
+  stimulus_output_dir: /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop
   dummy_ini_dir: data/dummy_ini/
 
 debug: False
