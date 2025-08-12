@@ -234,13 +234,22 @@ def move_tensor_center_to_location(tensor: torch.Tensor, new_center_um: Tuple[fl
     
     return shifted_tensor
 
+def get_roi_query_expression(roi_ids: List[int],) -> str:
+
+    if len(roi_ids) == 1:
+        _str = f"roi_id={roi_ids[0]}"
+    elif len(roi_ids) > 1:
+        _str = f"roi_id in {str(tuple(roi_ids))}"
+    return _str
+
 def extract_rf_peaks_from_selected_rois(roi_ids: List[int],
                                         peak_sta_position_table: Any,
                                         ) -> Tuple[List[float], List[float]]:
     """
     Extracts the RF peaks from the PeakSTAPosition table for the given roi_ids.
     """
-    dj_query = peak_sta_position_table & f"roi_id in {str(tuple(roi_ids))}"
+    expression = get_roi_query_expression(roi_ids)
+    dj_query = peak_sta_position_table & expression
     if len(dj_query) == 0 or len(dj_query) != len(np.unique(roi_ids)):
         raise ValueError(f"Not all roi_ids {roi_ids} are present in the PeakSTAPosition table.")
     else:

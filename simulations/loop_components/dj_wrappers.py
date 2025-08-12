@@ -107,7 +107,7 @@ class DJTableHolder:
                 Baden16Traces, CelltypeAssignment,
                 CascadeTraceParams, CascadeParams, CascadeTraces, CascadeSpikes,
                 # RF
-                DNoiseTraceParams,DNoiseTrace,STAParams,STA, SplitRFParams,SplitRF,
+                DNoiseTraceParams,DNoiseTrace,STAParams,STA, SplitRFParams,SplitRF,FitGauss2DRF,
                 PeakSTAPosition,
                 OpenRetinaHoeflingFormat, schema,
             )
@@ -152,6 +152,7 @@ class DJTableHolder:
             'SplitRFParams': SplitRFParams,
             'SplitRF': SplitRF,
             'PeakSTAPosition': PeakSTAPosition,
+            'FitGauss2DRF': FitGauss2DRF,
 
             
 
