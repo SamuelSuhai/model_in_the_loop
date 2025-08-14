@@ -15,6 +15,8 @@ from openretina.data_io.hoefling_2024.responses import filter_responses, make_fi
 from openretina.data_io.base import MoviesTrainTestSplit, ResponsesTrainTestSplit
 from openretina.utils.video_analysis import decompose_kernel
 
+from openretina.utils.nnfabrik_model_loading import Center
+
 
 import lightning.pytorch
 import torch.utils.data as data
@@ -90,7 +92,10 @@ def generate_optimization_components(stimulus_range_constraints: Dict[str, float
     return stimulus_postprocessor, response_reducer
 
 
-
+def get_model_gaussian_scaled_means(model: BaseCoreReadout, session: str) -> torch.Tensor:
+    """Return the model gaussian spatial mean over the core output"""
+    session_readout = model.readout[session]
+    return session_readout.mask_mean * session_readout.gaussian_mean_scale
 
 #@time_it
 def generate_mei(model: BaseCoreReadout,
