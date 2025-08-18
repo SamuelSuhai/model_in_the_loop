@@ -43,8 +43,6 @@ from openretina.insilico.stimulus_optimization.regularizer import (
     ChangeNormJointlyClipRangeSeparately,
 )
 from openretina.models.core_readout import load_core_readout_model
-from openretina.utils.nnfabrik_model_loading import load_ensemble_model_from_remote
-from openretina.utils.plotting import play_stimulus, plot_stimulus_composition
 
 from .utils import time_it
 

@@ -209,9 +209,14 @@ class DJTableHolder:
         sleep(self.sleep_time_between_table_ops)
 
         preprocess_params =self.table_parameters.get("PreprocessParams", {})
+        if isinstance(preprocess_params, list):
+            for params in preprocess_params:
+                self('PreprocessParams')().add_default(**params)
+        elif isinstance(preprocess_params, dict):
+            self('PreprocessParams')().add_default(**preprocess_params)
+        
         print("preprocessing params:\n",preprocess_params)
-        self('PreprocessParams')().add_default(**preprocess_params)
-   
+
         
 
         # Celltype assignment
