@@ -5,43 +5,73 @@ import cv2
 import os
 
 from openretina.models.core_readout import BaseCoreReadout
-
+from simulations.loop_components.utils import log
 
 # constants 
 NORM_DICT = {'norm_mean': 36.979288270899204, 'norm_std': 36.98463253226166}
 
 
+def draw_pixel_circle(tensor: torch.Tensor,
+                     center: Tuple[int, int],
+                     radius: int,
+                     value: float) -> torch.Tensor:
+    """
+    Draws a circle on the tensor at the specified center with the given radius and value.
+    The tensor is expected to be of shape (C, T, H, W).
+    """
+    c, t, h, w = tensor.shape
+    y, x = torch.meshgrid(torch.arange(h), torch.arange(w), indexing='ij')
+    dist_from_center = ((x - center[1]) ** 2 + (y - center[0]) ** 2).sqrt()
+    mask = dist_from_center <= radius
+    tensor[:, :, mask] = value
+    return tensor
 
 
 
-def create_rf_test_tensor(heigth: int = 18, 
-                          width: int = 16,
+
+def create_rf_test_tensor(heigth: int = 72, 
+                          width: int = 64,
                           frames: int = 50, 
-                          inter_stimulus_interval: int = 10,
-                          half_square_pix_num = 1, # half the size of the square in pixels
+                          inter_stimulus_interval: int = 40,
+                          radius: int | List[int] = [2,4], # half the size of the square in pixels
                           baseline_pixel_value: float = 122,
                           abs_pixel_increase_from_bsl: float = 100,
                          ) -> torch.Tensor:
     """
-    Creates a tensor """
+    Creates a tensor with the test stimulus for the receptive field (RF) test.
+    Is a stimulus thats black and then has a circle with a given radius and pixel value on and then off. 
+    There can be mulitple radii,
+    assuming one pixel is 12,5 um then the default will draw circles of diameter 50um and 100 um."""
     
-   
-    # create baseline tensor
-    rf_test_tensor = baseline_pixel_value *  torch.ones((2, (frames  + inter_stimulus_interval) * 2 , heigth, width), dtype=torch.float32)
+    if isinstance(radius, int):
+        radius = [radius]
 
-    # add a square in the middle in both channels (white)
+
+    trial_frame_nr = frames + inter_stimulus_interval
+
+    # on, of for every radius
+    total_nr_trials = len(radius) * 2  
+    total_frame_nr = total_nr_trials * trial_frame_nr
+   
+
     center_h = heigth // 2
     center_w = width // 2
-    h_start = center_h - half_square_pix_num
-    h_end = center_h + half_square_pix_num 
-    w_start = center_w - half_square_pix_num
-    w_end = center_w + half_square_pix_num 
+
+    # create baseline tensor
+    rf_test_tensor = baseline_pixel_value *  torch.ones((2, total_frame_nr , heigth, width), dtype=torch.float32)
     
-    n_frames_trial = frames + inter_stimulus_interval
-    for i,intensity_increase in enumerate([abs_pixel_increase_from_bsl, - abs_pixel_increase_from_bsl]):
-        t_start = i * n_frames_trial + inter_stimulus_interval
-        t_end = t_start + frames
-        rf_test_tensor[:,t_start: t_end, h_start:h_end, w_start:w_end ] += intensity_increase  
+    t_end = 0
+    for rad in radius:
+        for intensity_increase in [abs_pixel_increase_from_bsl, - abs_pixel_increase_from_bsl]:
+            
+            t_start = inter_stimulus_interval + t_end
+            t_end = t_start + frames
+            rf_test_tensor[:,t_start: t_end,] = draw_pixel_circle(
+                rf_test_tensor[:,t_start: t_end,],
+                center=(center_h, center_w),
+                radius=rad,
+                value=baseline_pixel_value + intensity_increase
+            )
 
     # clip to [0, 255]
     torch.clamp(rf_test_tensor, min=0, max=255, out=rf_test_tensor)
@@ -197,66 +227,130 @@ def retrieve_model_rf(trained_model: BaseCoreReadout):
     pass
 
 
-def move_tensor_center_to_location(tensor: torch.Tensor, new_center_um: Tuple[float, float], pixel_size_um: float = 50) -> torch.Tensor:
-    """
-    It takes in a tensor where the center is in the middle of the tensor, and moves the center to the new location.
-    For this the new_center_um is translated from um to pixels relative to the center.
-    
-    Args:
-        tensor: Input tensor of shape (C, T, H, W)
-        new_center_um: New center coordinates in micrometers (x, y)
-        pixel_size_um: Size of each pixel in micrometers
-        
-    Returns:
-        Shifted tensor with the center moved to the new location
-    """
-    # Get tensor dimensions
-    _, _, height, width = tensor.shape
-    
-    # Calculate tensor center in pixels
-    tensor_center_y = height // 2
-    tensor_center_x = width // 2
-    
-    # Convert the new center from micrometers to pixels
-    new_center_x_pix = new_center_um[0] / pixel_size_um
-    new_center_y_pix = new_center_um[1] / pixel_size_um
-    
-    # Calculate the shift needed - we want to move the content so the tensor center
-    # is at the new location. 
-    shift_x = int(tensor_center_x - new_center_x_pix)
-    shift_y = int(tensor_center_y - new_center_y_pix)
-    
-    # Use torch.roll to efficiently shift the tensor content
-    # First shift in height dimension (dim=2)
-    shifted_tensor = torch.roll(tensor, shifts=shift_y, dims=2)
-    # Then shift in width dimension (dim=3)
-    shifted_tensor = torch.roll(shifted_tensor, shifts=shift_x, dims=3)
-    
-    return shifted_tensor
+def get_roi_query_expression(roi_ids: List[int],) -> str:
 
-def extract_rf_peaks_from_selected_rois(roi_ids: List[int],
-                                        peak_sta_position_table: Any,
-                                        ) -> Tuple[List[float], List[float]]:
+    if len(roi_ids) == 1:
+        _str = f"roi_id={roi_ids[0]}"
+    elif len(roi_ids) > 1:
+        _str = f"roi_id in {str(tuple(roi_ids))}"
+    return _str
+
+def transform_to_qdspy_coord(stimulus_table,all_x_pix: List[float], all_y_pix: List[float]) -> Tuple[List[float],List[float]]:
     """
-    Extracts the RF peaks from the PeakSTAPosition table for the given roi_ids.
+    transforms indices of dense noise to QDSpy coordinates in microns.
+    x_pix values are AXIS 0 in DENSE NOISE 
+    y_pix values are AXIS 1 in DENSE NOISE
     """
-    dj_query = peak_sta_position_table & f"roi_id in {str(tuple(roi_ids))}"
-    if len(dj_query) == 0 or len(dj_query) != len(np.unique(roi_ids)):
+    
+    # Get stimulus parameters
+    stim_query = stimulus_table & {'stim_family': 'noise'}
+    stim_dict = stim_query.fetch1('stim_dict')
+
+    # Get pixel size and offset
+    pixel_size_x_um = stim_dict['pix_scale_x_um']
+    pixel_size_y_um = stim_dict['pix_scale_y_um']
+
+    # What about offset? in stim dict?
+    offset_x_um = stim_dict['offset_x_um']
+    offset_y_um = stim_dict['offset_y_um']
+
+    # get number of pixels in x and y
+    pix_n_x, pix_n_y = stim_dict["pix_n_x"],stim_dict["pix_n_y"]
+    
+    # RF center relative to stimcenter (assume centered noise presentation)
+    # we need to further subtract one by the pixels to that it is in index 0 base
+    x_center_pix = (pix_n_x - 1) / 2
+    y_center_pix = (pix_n_y - 1) / 2
+
+    if  isinstance(all_x_pix, (int, float)):
+        # If single value is passed, convert to list
+        all_x_pix_list = [all_x_pix]
+    else:
+        all_x_pix_list = all_x_pix
+
+    if isinstance(all_y_pix, (int, float)):
+        # If single value is passed, convert to list
+        all_y_pix_list = [all_y_pix]
+    else:
+        all_y_pix_list = all_y_pix
+
+    all_x_um = []
+    all_y_um = []
+    for x_pix,y_pix in zip(all_x_pix_list, all_y_pix_list):
+
+        # We need to add half a pixel because QDSpy coordinates are in the center of the pixel
+        x_pix = x_pix - x_center_pix
+        y_pix = y_pix - y_center_pix
+
+        # Calculate position in microns
+        x_um = int(x_pix * pixel_size_x_um) + offset_x_um
+        y_um = int(y_pix * pixel_size_y_um) + offset_y_um  
+        all_x_um.append(x_um)
+        all_y_um.append(y_um)
+
+    return all_x_um, all_y_um
+
+
+def extract_rf_means_from_selected_rois(roi_ids: List[int],
+                                        stimulus_table: Any,
+                                        gauss_rf_fit_table: Any,
+                                        ) -> Tuple[List[float], List[float],List[int]]:
+    """
+    Extracts the RF  table for the given roi_ids.
+    """
+    expression = get_roi_query_expression(roi_ids)
+    fit_query = gauss_rf_fit_table & expression
+    if len(fit_query) == 0 or len(fit_query) != len(np.unique(roi_ids)):
         raise ValueError(f"Not all roi_ids {roi_ids} are present in the PeakSTAPosition table.")
     else:
-        print(f"Found {len(dj_query)} rois in the PeakSTAPosition table.")
+        print(f"Found {len(fit_query)} rois in the PeakSTAPosition table.")
 
-    rf_peak_x_um = dj_query.fetch('rf_peak_x_um').tolist()
-    rf_peak_y_um = dj_query.fetch('rf_peak_y_um').tolist()
+    srf_pamas,roi_order = fit_query.fetch('srf_params', 'roi_id',)
 
-    return rf_peak_x_um, rf_peak_y_um
+    # NOTE: the transform fom x to y is because in QDSpy axis 0 of dense noise is x
+    all_x_pix = [srf_param["y_mean"] for srf_param in srf_pamas]
+    all_y_pix = [srf_param["x_mean"] for srf_param in srf_pamas]
+
+    # transform to QDSpy coordinates
+    all_x_um, all_y_um = transform_to_qdspy_coord(stimulus_table, all_x_pix, all_y_pix)
 
 
+    return all_x_um, all_y_um,roi_order
+
+def upsample_meis(meis: List [torch.Tensor] | torch.Tensor,
+                  upsample_factor: int = 4,
+                  ) -> List[torch.Tensor] | torch.Tensor:
+    """
+    Upsamples MEI tensors by repeating each pixel value `upsample_factor` times.
+    Example if updampe_factor is 2 then pixel pixel value at (0,0) is also at (0,1) and (1,0) and (1,1).
+    the default 4 will make that the 18x16 input is upsampled to 72x64."""
+
+    if upsample_factor < 1:
+        raise ValueError("upsample_factor must be >= 1")
+
+    if isinstance(meis, torch.Tensor):
+        mei_list = [meis]
+    else:
+        meis_list = meis
+
+    upsampled_meis = []
+    for mei in mei_list:
+        if not isinstance(mei, torch.Tensor):
+            raise TypeError("All elements must be torch.Tensor.")
+        if mei.ndim != 4:
+            raise ValueError(f"Expected tensor of shape (C, T, H, W), got {mei.shape}.")
+
+        # Repeat pixels into contiguous blocks along H and W
+        upsampled = mei.repeat_interleave(upsample_factor, dim=2) \
+                       .repeat_interleave(upsample_factor, dim=3)
+        upsampled_meis.append(upsampled)
+
+    return upsampled_meis if len(upsampled_meis) > 1 else upsampled_meis[0]
  
 def create_rf_avi_from_roi_ids(roi_ids: List[int],
-                              peak_sta_position_table: Any,
-                              abs_save_dir: str,
-                              
+                                stimulus_table: Any,
+                                gauss_rf_fit_table: Any,
+                                abs_save_dir: str,
                               ) -> None:
     """
     Takes a list of rois, the PeakSTAPosition table, 
@@ -264,8 +358,9 @@ def create_rf_avi_from_roi_ids(roi_ids: List[int],
 
 
     # extract the RF peaks from the PeakSTAPosition table
-    rf_peak_x_um, rf_peak_y_um = extract_rf_peaks_from_selected_rois(roi_ids, peak_sta_position_table)
-    
+    rf_peak_x_um, rf_peak_y_um,roi_order = extract_rf_means_from_selected_rois(roi_ids, stimulus_table,gauss_rf_fit_table)
+    log(f"Order of extracted RF peaks: {roi_order}.")
+
     # create the rf test stimulus
     print("Creating RF test stimulus tensor...")
     rf_test_tensor = create_rf_test_tensor(baseline_pixel_value=122,
@@ -290,7 +385,8 @@ def create_rf_avi_from_roi_ids(roi_ids: List[int],
 def create_full_avi_from_roi_id_and_seed(rois_seed: List[Tuple[int,int]],
                                          neuron_seed_mei_dict: Dict[int,Dict[int,torch.Tensor]],
                                          roi_id_to_neuron_id: Dict[int,int],
-                                         peak_sta_position_table: Any,
+                                         stimulus_table: Any,
+                                        fit_gauss_2d_rf_table: Any,
                                          trained_model: BaseCoreReadout, # for getting model RFs.
                                          abs_save_dir: str,
                                          mei_sd_scale_factor: float = 2,
@@ -306,10 +402,15 @@ def create_full_avi_from_roi_id_and_seed(rois_seed: List[Tuple[int,int]],
     # extract the MEIs for the given roi_ids and seeds
     selected_meis = extract_selected_meis(rois_seed, neuron_seed_mei_dict,roi_id_to_neuron_id)
 
-    # convert back to original space
+
+    ## Upsample and put back to space: convert back to original space
     all_meis_list = []
     all_meis_ids = []
     for key, mei in selected_meis.items():
+
+        # upsample
+        mei = upsample_meis(mei, upsample_factor=4)
+
         mei = put_mei_back_to_original_space(mei,
                                              norm_dict=NORM_DICT,
                                              mei_sd_scale_factor=mei_sd_scale_factor)
@@ -321,6 +422,7 @@ def create_full_avi_from_roi_id_and_seed(rois_seed: List[Tuple[int,int]],
     suffled_order = np.random.permutation(list(range(len(all_meis_list))))
     all_meis_list = [all_meis_list[i] for i in suffled_order]
     all_meis_ids = [all_meis_ids[i] for i in suffled_order]
+    log(f"MEIs ids shuffled order: {all_meis_ids}.")
     print(f"MEIs shuffled. new index order:  {suffled_order}.")
 
 
@@ -336,10 +438,12 @@ def create_full_avi_from_roi_id_and_seed(rois_seed: List[Tuple[int,int]],
     full_stimulus = torch.cat((rf_test_tensor, all_mei_tensor), dim=1)
 
     # get the sta rf peak positions for selected rois
-    rf_peak_x_um, rf_peak_y_um = extract_rf_peaks_from_selected_rois(
+    rf_peak_x_um, rf_peak_y_um,roi_order = extract_rf_means_from_selected_rois(
         [roi_id for roi_id, _ in rois_seed],
-        peak_sta_position_table
+        stimulus_table=stimulus_table,
+        gauss_rf_fit_table=fit_gauss_2d_rf_table,
     )
+    log(f"Order of extracted RF peaks: {roi_order}.")
 
     # TODO: get model RF peaks
     rf_peak_x_um_model = []
@@ -358,6 +462,7 @@ def create_full_avi_from_roi_id_and_seed(rois_seed: List[Tuple[int,int]],
     mei_avi_filename = os.path.join(abs_save_dir,"mei_test_stimulus.avi")
     print("Creating MEI test stimulus avi file at ", mei_avi_filename)
     create_avi_from_tensor(full_stimulus, mei_avi_filename)
+    log(f"Created avi file from termsor of shape {full_stimulus.shape} at {mei_avi_filename}.")
 
     print("DONE!")
 

@@ -1,9 +1,12 @@
 from functools import wraps
 from time import perf_counter
+import datetime
 from typing import Callable, Any,Tuple, Dict
 import numpy as np
+import os
 
 EVAL_FOLDER = "/gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/evaluation"
+ONLINE_EXPERIMENT_LOG_DIR = "/gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/logs/online_experiments"
 
 def time_it(func: Callable[..., Any]) -> Callable[..., Any]:
 
@@ -20,7 +23,24 @@ def time_it(func: Callable[..., Any]) -> Callable[..., Any]:
         return out
     return wrapper
 
+def log(msg: str) -> None:
+    day_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    
+    # add folder and file if they dont exists
+    save_dir = os.path.join(ONLINE_EXPERIMENT_LOG_DIR, day_str)
+    log_file_path = f"{ONLINE_EXPERIMENT_LOG_DIR}/{day_str}/log.txt"
 
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+        # write start message
+        with open(log_file_path, "w") as log_file:
+            log_file.write(f"Log started on {day_str}\n")
+    
+    # append message to the log file
+    with open(log_file_path, "a") as log_file:
+        log_file.write(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {msg}\n")
+        
 
 
 # def extract_hoefling_format_data_from_db(dj_table_holder: DJTableHolder) -> Dict[str, Dict] | None:

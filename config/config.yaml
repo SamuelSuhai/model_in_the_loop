@@ -17,18 +17,19 @@ DJ:
     field_loc: 3
     stimulus_loc: 4
     cond1_loc: 5
-    data_dir: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/test_rfs # #/gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/first_closed_loop_experiment 
+    data_dir: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/klaudia_data_test  
 
   table_parameters:
     # for the DJ tables 
-    PreprocessParams: # {}
+    PreprocessParams: [{preprocess_id: 1,fs_resample: 60,stim_names: ["chrip","mb","densenoise"]},{preprocess_id: 2,window_length: 60,poly_order: 3,non_negative: 1,subtract_baseline: 0,standardize: 1,stim_names: ["mouse_cam"]}]
       # for janes densenoise (requires 60 hz trace sampling, dont know why ...)
-      fs_resample: 60
+      # fs_resample: 60
+      
 
       # # Below the values for spike estimation I think
       # window_length: 60  # default
       # poly_order: 3  # default
-      # non_negative: 1  # non default
+      # non_negative: 1,  # non default
       # subtract_baseline: 0  # non default
       # standardize: 1  # default
 
@@ -62,7 +63,7 @@ paths:
   home_directory: /gpfs01/euler/User/ssuhai
   dj_config_directory: datajoint 
   rgc_output_directory: datajoint/rgc_classifier # dir where classifier should be stored
-  recording_files_dir: /gpfs01/euler/data/Data/Suhai/move_closed_loop_data_here # /gpfs01/euler/data/Data/Suhai/test_data_klaudia  
+  recording_files_dir: /gpfs01/euler/data/Data/Suhai/test_data_klaudia # /gpfs01/euler/data/Data/Suhai/move_closed_loop_data_here #   
   stimulus_output_dir: /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop
   dummy_ini_dir: data/dummy_ini/
 
