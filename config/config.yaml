@@ -17,11 +17,11 @@ DJ:
     field_loc: 3
     stimulus_loc: 4
     cond1_loc: 5
-    data_dir: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/klaudia_data_test #/gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/test_rfs # 
+    data_dir: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/klaudia_data_test  
 
   table_parameters:
     # for the DJ tables 
-    PreprocessParams: [{preprocess_id: 1,fs_resample: 60},{preprocess_id: 2,window_length: 60,poly_order: 3,non_negative: 1,subtract_baseline: 0,standardize: 1}]
+    PreprocessParams: [{preprocess_id: 1,fs_resample: 60,stim_names: ["chrip","mb","densenoise"]},{preprocess_id: 2,window_length: 60,poly_order: 3,non_negative: 1,subtract_baseline: 0,standardize: 1,stim_names: ["mouse_cam"]}]
       # for janes densenoise (requires 60 hz trace sampling, dont know why ...)
       # fs_resample: 60
       

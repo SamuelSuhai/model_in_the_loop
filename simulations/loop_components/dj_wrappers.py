@@ -9,7 +9,6 @@ from typing import List, Dict, Any, Tuple, Callable,Optional
 import numpy as np
 import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
-
 from djimaging.utils import plot_utils
 from djimaging.utils.dj_utils import get_primary_key
 from .utils import time_it
@@ -17,6 +16,8 @@ from .model_to_stimulus import (load_stimuli, preprocess_for_openretina,
                                 train_model_online,generate_meis_with_n_random_seeds,
                                 decompose_mei, get_model_mei_response,Center,get_model_gaussian_scaled_means
             )
+
+from omegaconf import DictConfig, ListConfig
 
 
 
@@ -209,12 +210,13 @@ class DJTableHolder:
         sleep(self.sleep_time_between_table_ops)
 
         preprocess_params =self.table_parameters.get("PreprocessParams", {})
-        if isinstance(preprocess_params, list):
+        if isinstance(preprocess_params, ListConfig):
             for params in preprocess_params:
                 self('PreprocessParams')().add_default(**params)
-        elif isinstance(preprocess_params, dict):
+        elif isinstance(preprocess_params, DictConfig):
             self('PreprocessParams')().add_default(**preprocess_params)
-        
+        else:
+            raise ValueError(f"Expected preprocess_params to be DictConfig or ListConfig, got {type(preprocess_params)}")
         print("preprocessing params:\n",preprocess_params)
 
         
@@ -840,10 +842,8 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         self.display_channel = 1 # UV channel 
 
         self.seeds = seeds
-        self.colors = plt.cm.nipy_spectral(np.linspace(0, 1,len(self.seeds))) 
-
-        # make sure openretina table is empty 
-        assert len(self.dj_table_holder('OpenRetinaHoeflingFormat')()) == 0, "OpenRetinaHoeflingFormat table is not empty. Please clear it before using this wrapper."
+        self.colors = plt.cm.nipy_spectral(np.linspace(0, 1,len(self.seeds)))
+ 
 
     def plot_seed_respones(self,neuron_id: int,ax: plt.Axes, optimization_window= (10,20),response_window = (21,50)):
         """
@@ -956,14 +956,14 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             # preprocess and filter further 
             movies_dict = load_stimuli(self.model_configs)
 
-            neuron_data_dict = preprocess_for_openretina(self.session_dict_raw,self.model_configs)
+            self.neuron_data_dict = preprocess_for_openretina(self.session_dict_raw,self.model_configs)
 
 
             # load and refine model
-            self.model = train_model_online(self.model_configs,neuron_data_dict,movies_dict)
+            self.model = train_model_online(self.model_configs,self.neuron_data_dict,movies_dict)
             
 
-            ## MEI generatio 
+            ## MEI generation
             new_session_id = list(self.session_dict_raw.keys())[0]
 
             # center readouts in mei generation 
@@ -972,7 +972,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             center(self.model)
                     
             # for debug: check roi_id to neuron_id mapping
-            self.rois_after_filtering: List[int] = neuron_data_dict[new_session_id].session_kwargs["roi_ids"].tolist()
+            self.rois_after_filtering: List[int] = self.neuron_data_dict[new_session_id].session_kwargs["roi_ids"].tolist()
 
             # the neuron_id is the index in the readout I think, so we need a mapping betwen roi_id and neuron_id
             neurons_ids_to_analyze = list(range(len(self.rois_after_filtering)))
@@ -1009,6 +1009,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                         "spatial_kernels": spatial_kernels,
                         "stimulus_time": stimulus_time,
                     }
+
             if progress_callback is not None:
                 progress_callback(100)
 

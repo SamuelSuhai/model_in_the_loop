@@ -97,11 +97,12 @@ def get_model_gaussian_scaled_means(model: BaseCoreReadout, session: str) -> tor
 
 #@time_it
 def generate_mei(model: BaseCoreReadout,
-                      new_sessoin_id:str,
+                      new_session_id:str,
                       stimulus_postprocessor,
                       response_reducer,
                       stimulus_shape: tuple = STIMULUS_SHAPE,
                       neuron_id: List[int] | int = 0, 
+                      max_iterations: int = 10,
                       ) -> torch.Tensor:
 
     # check if model params are on same device as stimulus
@@ -113,9 +114,9 @@ def generate_mei(model: BaseCoreReadout,
     stimulus.data = stimulus.data * 0.1
 
     objective = IncreaseObjective(
-        model, neuron_indices=neuron_id, data_key=new_sessoin_id, response_reducer=response_reducer
+        model, neuron_indices=neuron_id, data_key=new_session_id, response_reducer=response_reducer
     )
-    optimization_stopper = OptimizationStopper(max_iterations=10)
+    optimization_stopper = OptimizationStopper(max_iterations=max_iterations)
     optimizer_init_fn = partial(torch.optim.SGD, lr=10.0)
 
     optimize_stimulus(
