@@ -203,7 +203,7 @@ def generate_meis_with_n_random_seeds(
             
             # set the seed 
             single_neuron_seed_mei = generate_mei(model=model,
-                        new_sessoin_id = new_session_id,
+                        new_session_id = new_session_id,
                         stimulus_postprocessor = stimulus_postprocessor,
                         response_reducer = response_reducer,
                         stimulus_shape= STIMULUS_SHAPE,
@@ -214,7 +214,7 @@ def generate_meis_with_n_random_seeds(
 
 
 
-@time_it
+#@time_it
 def train_model_online(cfg: DictConfig,
                        neuron_data_dict:Dict[str,ResponsesTrainTestSplit],
                        movies_dict:Dict[str,MoviesTrainTestSplit] | MoviesTrainTestSplit) -> BaseCoreReadout:
@@ -296,9 +296,22 @@ def train_model_online(cfg: DictConfig,
     short_cyclers = [(n, ShortCycler(dl)) for n, dl in dataloaders.items()]
     dataloader_mapping = {f"DataLoader {i}": x[0] for i, x in enumerate(short_cyclers)}
     log.info(f"Dataloader mapping: {dataloader_mapping}")
-    trainer.test(model, dataloaders=[c for _, c in short_cyclers], ckpt_path="best")
+    test_results = trainer.test(model, dataloaders=[c for _, c in short_cyclers], ckpt_path="best")
+
 
     return model
+
+# def get_neuron_test_set_correlations(test_results,
+                                         
+#     neuron_correlations = {}
+    
+#     # Extract per-neuron correlations from test results if available
+#     for session_idx, result in enumerate(test_results):
+#         if "neuron_correlations" in result:
+#             session_id = dataloader_mapping.get(f"DataLoader {session_idx}", f"session_{session_idx}")
+#             neuron_correlations[session_id] = result["neuron_correlations"]
+
+                                     
 
 #@time_it
 def preprocess_for_openretina(raw_neuron_data_dict:Dict[str,Dict[str,Any]],model_condigs) -> Dict[str,ResponsesTrainTestSplit]:
@@ -354,7 +367,7 @@ def from_data_to_mei_video(cfg: DictConfig, raw_neuron_data_dict:Dict[str,Dict[s
         reducer_length=10,
     )
     new_stimulus = generate_mei(model=model,
-                      new_sessoin_id = new_session_id,
+                      new_session_id = new_session_id,
                       stimulus_postprocessor = stimulus_postprocessor,
                       response_reducer = response_reducer,
                       stimulus_shape= STIMULUS_SHAPE,

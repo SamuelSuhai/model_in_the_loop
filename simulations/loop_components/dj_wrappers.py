@@ -564,7 +564,48 @@ class QualityAndTypeWrapper(DJComputeWrapper):
         assert 0 <= qi <= 1, "Quality index must be between 0 and 1"
         return (alpha_min + (qi * (alpha_max - alpha_min))) * 255
 
+    def get_roi_ids_passing_criterion(self, 
+                                      field_key: Dict[str, Any],
+                                      d_qi_min: float, 
+                                      qidx_min: float,
+                                      celltypes: Optional[List] = None) -> List[int]:
+        """
+        For a field key it looks in the tables ChirpQI and OsDsIndexes for the d_qi and qidx values. Takes rois that pass either chrip or ori_dir quality index as passing.
+        """
 
+        chirp_qi_table = self.dj_table_holder('ChirpQI')() & field_key
+        ori_dir_qi_table = self.dj_table_holder('OsDsIndexes')() & field_key
+
+        if len(chirp_qi_table) == 0 or len(ori_dir_qi_table) == 0:
+            raise ValueError("ChirpQI or OsDsIndexes table is empty for the given field_key")
+        
+        all_qi_table = chirp_qi_table * ori_dir_qi_table
+
+        # Fetch all roi_ids and their corresponding d_qi and qidx values
+        roi_ids, d_qi_values, qidx_values = all_qi_table.fetch('roi_id', 'd_qi', 'qidx')
+
+        # If celltypes are specified, filter roi_ids based on celltype assignment
+        if celltypes is not None:
+            celltype_table = self.dj_table_holder('CelltypeAssignment')() & field_key
+            if len(celltype_table) == 0:
+                raise ValueError("CelltypeAssignment table is empty for the given field_key")
+            
+            # create a criterion
+            celltype_data = celltype_table.fetch('roi_id','celltype')
+            is_correct_type = np.isin(celltype_data['celltype'], celltypes).tolist()
+        
+        else:
+            # no filtering
+            is_correct_type = [True] * len(roi_ids)
+
+
+        # Filter roi_ids based on the criteria
+        passing_roi_ids = [
+            roi_id for roi_id, d_qi, qidx, is_good_type in zip(roi_ids, d_qi_values, qidx_values,is_correct_type, strict=True)
+            if (d_qi >= d_qi_min or qidx >= qidx_min) and is_good_type
+        ]
+
+        return passing_roi_ids
     
     def text1(self,roi_id: int, field_key = {}, ) -> str:
         """
@@ -768,7 +809,30 @@ class STAWrapper(DJComputeWrapper):
                 self.dj_table_holder(table_name)().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
                 sleep(self.dj_table_holder.sleep_time_between_table_ops)
     
-    
+    def get_roi_ids_passing_criterion(self, 
+                                      field_key: Dict[str, Any], 
+                                      rf_qidx_min: float = 0.5,) -> List[int]:
+        """
+        Looks at the FitGauss2DRF table and returns the roi_ids that have a qidx value above the given threshold.
+        """
+
+        fit_gauss_table = self.dj_table_holder('FitGauss2DRF')() & field_key
+
+        if len(fit_gauss_table) == 0:
+            raise ValueError("FitGauss2DRF table is empty for the given field_key")
+        
+        # Fetch all roi_ids and their corresponding qidx values
+        roi_ids, qidx_values = fit_gauss_table.fetch('roi_id', 'qidx')
+
+        # Filter roi_ids based on the criteria
+        passing_roi_ids = [
+            roi_id for roi_id, qidx in zip(roi_ids, qidx_values, strict=True)
+            if qidx >= rf_qidx_min
+        ]
+
+        return passing_roi_ids
+
+
     def plot_roi_overview(self, roi_keys: List[Dict[str, Any]]) -> None:
         pass
         
@@ -938,6 +1002,9 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                 if progress_callback is not None:
                     progress_callback(progress)
 
+
+    def get_roi_ids_passing_criterion(self,) -> List[int]:
+        return [2]
 
     def compute_analysis(self, field_key = {},progress_callback: Optional[Callable] = None) -> None:
 
