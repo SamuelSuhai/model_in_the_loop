@@ -13,7 +13,7 @@ from djimaging.utils import plot_utils
 from djimaging.utils.dj_utils import get_primary_key
 from .utils import time_it
 from .model_to_stimulus import (load_stimuli, preprocess_for_openretina,
-                                train_model_online,generate_meis_with_n_random_seeds,
+                                train_model_online,get_single_neuron_test_correlations,generate_meis_with_n_random_seeds,
                                 decompose_mei, get_model_mei_response,Center,get_model_gaussian_scaled_means
             )
 
@@ -368,30 +368,38 @@ class Preprocessor:
         self.dj_table_holder('Presentation')().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
         sleep(self.dj_table_holder.sleep_time_between_table_ops)
         
-    def add_iteration_roi_mask(self) -> None:
+    def add_iteration_roi_mask(self, field_key = {}) -> None:
         """
         Add ROIs for the current iteration by drawing and inserting them into the database.
         NOTE that this will not be called from the GUI, but its for when we use this from the command line
         """
         self.dj_table_holder('RoiMask')().rescan_filesystem(verboselvl=3)
-        sleep(self.dj_table_holder.sleep_time_between_table_ops)
-
-        missing_fields = self.dj_table_holder('RoiMask')().list_missing_field()
-        assert len(missing_fields) == 1 , f"Expecting exatly no missing fields but found {len(missing_fields)}"
-        field_key = missing_fields[0]
-        sleep(self.dj_table_holder.sleep_time_between_table_ops)
+        
+        if field_key == {}:
+            missing_fields = self.dj_table_holder('RoiMask')().list_missing_field()
+            assert len(missing_fields) == 1 , f"Expecting exatly no missing fields but found {len(missing_fields)}"
+            field_key = missing_fields[0]
+            
 
 
         roi_canvas = self.dj_table_holder('RoiMask')().draw_roi_mask(field_key=field_key, canvas_width=30)
         
-        #TODO : REALLY UNSURE IF THIS DOES WHAT I WANT 
-        # roi_canvas.exec_autorois_all_stacks()
+        # execute autorois for the main stack
         roi_canvas.exec_autorois_all()
-        roi_canvas.exec_save_to_file()
+        
+        # apply autoshoft to all stimuli except the main one
+        for i,pres_key in enumerate(roi_canvas.pres_names):
+            if i == roi_canvas.main_stim_idx:
+                continue
+            roi_canvas.set_selected_stim(pres_key)
+            roi_canvas.exec_auto_shift()
+
+
+        # save masks
+        roi_canvas.exec_save_all_to_file()
 
         # add to database
         roi_canvas.insert_database(roi_mask_tab=self.dj_table_holder('RoiMask'), field_key=field_key)
-        sleep(self.dj_table_holder.sleep_time_between_table_ops)
 
 
         if self.dj_table_holder.plot_results:
@@ -568,7 +576,8 @@ class QualityAndTypeWrapper(DJComputeWrapper):
                                       field_key: Dict[str, Any],
                                       d_qi_min: float, 
                                       qidx_min: float,
-                                      celltypes: Optional[List] = None) -> List[int]:
+                                      celltypes: List[int] = list(range(99)),
+                                      classifier_confidence: float = 0.0) -> List[int]:
         """
         For a field key it looks in the tables ChirpQI and OsDsIndexes for the d_qi and qidx values. Takes rois that pass either chrip or ori_dir quality index as passing.
         """
@@ -579,31 +588,34 @@ class QualityAndTypeWrapper(DJComputeWrapper):
         if len(chirp_qi_table) == 0 or len(ori_dir_qi_table) == 0:
             raise ValueError("ChirpQI or OsDsIndexes table is empty for the given field_key")
         
-        all_qi_table = chirp_qi_table * ori_dir_qi_table
-
         # Fetch all roi_ids and their corresponding d_qi and qidx values
-        roi_ids, d_qi_values, qidx_values = all_qi_table.fetch('roi_id', 'd_qi', 'qidx')
+        roi_ids, qidx_values = chirp_qi_table.fetch('roi_id', 'qidx')
+        roi_ids_mb,d_qi_values = ori_dir_qi_table.fetch('roi_id', 'd_qi')
 
-        # If celltypes are specified, filter roi_ids based on celltype assignment
-        if celltypes is not None:
-            celltype_table = self.dj_table_holder('CelltypeAssignment')() & field_key
-            if len(celltype_table) == 0:
-                raise ValueError("CelltypeAssignment table is empty for the given field_key")
-            
-            # create a criterion
-            celltype_data = celltype_table.fetch('roi_id','celltype')
-            is_correct_type = np.isin(celltype_data['celltype'], celltypes).tolist()
+        celltype_table = self.dj_table_holder('CelltypeAssignment')() & field_key
+        if len(celltype_table) == 0:
+            raise ValueError("CelltypeAssignment table is empty for the given field_key")
         
-        else:
-            # no filtering
-            is_correct_type = [True] * len(roi_ids)
+        # create a criterion
+        roi_ids_celltype,celltype_data,confidence_data = celltype_table.fetch('roi_id','celltype','confidence')
+        assert all([id1 == id2 ==id3 for id1,id2,id3 in zip(roi_ids,roi_ids_celltype,roi_ids_mb)]) , "Missmatch roi nr"
+        is_correct_type = np.isin(celltype_data, celltypes).tolist()
 
+        #  get the confidence of assigned group which is the max 
+        confidence_scors = [all_confidences.max() for all_confidences in confidence_data]
+        
 
         # Filter roi_ids based on the criteria
-        passing_roi_ids = [
-            roi_id for roi_id, d_qi, qidx, is_good_type in zip(roi_ids, d_qi_values, qidx_values,is_correct_type, strict=True)
-            if (d_qi >= d_qi_min or qidx >= qidx_min) and is_good_type
-        ]
+        passing_roi_ids = []
+        for roi_id, d_qi, qidx, confidence, is_good_type in zip(roi_ids, 
+                                                               d_qi_values, 
+                                                               qidx_values,
+                                                               confidence_scors,
+                                                               is_correct_type, strict=True):
+            
+            if (d_qi >= d_qi_min or qidx >= qidx_min) and (confidence >= classifier_confidence) and is_good_type:
+                passing_roi_ids.append(roi_id)
+
 
         return passing_roi_ids
     
@@ -771,43 +783,58 @@ class STAWrapper(DJComputeWrapper):
     def name(self) -> str:
         return "STA"
     
-    def compute_analysis(self, field_key = {},progress_callback: Optional[Callable] = None) -> None:
+    def compute_analysis(self, 
+                         field_key = {},
+                         roi_id_subset: Optional[List[int]] = None ,
+                         progress_callback: Optional[Callable] = None) -> None:
         """
         Compute the STA analysis.
         """
-        if len(self.dj_table_holder('STA')() & field_key) == 0:
+        complete_restriction = " AND ".join([f"{k}='{v}'" for k,v in field_key.items()])
+
+        if roi_id_subset is not None:
+            roi_restriction_string = f"roi_id in {str(tuple(roi_id_subset))}" if len(roi_id_subset) >= 2 else f"roi_id={str(roi_id_subset[0])}"
+            complete_restriction =  complete_restriction + " AND " + roi_restriction_string
+
+        
+        if len(self.dj_table_holder('STA')() & complete_restriction) == 0:
             if progress_callback is not None:
                 progress_callback(0)
             
-            self.dj_table_holder('DNoiseTrace')().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
-            sleep(self.dj_table_holder.sleep_time_between_table_ops)
+            self.dj_table_holder('DNoiseTrace')().populate(complete_restriction,processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+            
 
             if progress_callback is not None:
                 progress_callback(30)
-            self.dj_table_holder('STA')().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
-            sleep(self.dj_table_holder.sleep_time_between_table_ops)
+            self.dj_table_holder('STA')().populate(complete_restriction,processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
 
             if progress_callback is not None:
                 progress_callback(80)
-            self.dj_table_holder('SplitRF')().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
-            sleep(self.dj_table_holder.sleep_time_between_table_ops)
+            self.dj_table_holder('SplitRF')().populate(complete_restriction,processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
 
-            self.dj_table_holder("FitGauss2DRF")().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+            self.dj_table_holder("FitGauss2DRF")().populate(complete_restriction,processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
             
 
             if progress_callback is not None:
                 progress_callback(100)
 
-    def check_requirements(self, field_key) -> None:
+    def check_requirements(self, 
+                           field_key,
+                           roi_id_subset: Optional[List[int]] = None ,) -> None:
         """
         Check if the required tables are populated in the database.
         """
+        if roi_id_subset is None:
+            complete_restriction = field_key
+        else:
+            roi_restriction_string = f"roi_id in {str(tuple(roi_id_subset))}" if len(roi_id_subset) >= 2 else f"roi_id={str(roi_id_subset[0])}"
+            complete_restriction =  field_key & roi_restriction_string
+
         for table_name in self.requires_tables:
-            if len(self.dj_table_holder(table_name)() & field_key) == 0:
+            if len(self.dj_table_holder(table_name)() & complete_restriction) == 0:
                 
                 # populate the necessary tables
-                self.dj_table_holder(table_name)().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
-                sleep(self.dj_table_holder.sleep_time_between_table_ops)
+                (self.dj_table_holder(table_name)() &  complete_restriction).populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
     
     def get_roi_ids_passing_criterion(self, 
                                       field_key: Dict[str, Any], 
@@ -822,12 +849,11 @@ class STAWrapper(DJComputeWrapper):
             raise ValueError("FitGauss2DRF table is empty for the given field_key")
         
         # Fetch all roi_ids and their corresponding qidx values
-        roi_ids, qidx_values = fit_gauss_table.fetch('roi_id', 'qidx')
+        roi_ids, qidx_values = fit_gauss_table.fetch('roi_id', 'rf_qidx')
 
         # Filter roi_ids based on the criteria
         passing_roi_ids = [
-            roi_id for roi_id, qidx in zip(roi_ids, qidx_values, strict=True)
-            if qidx >= rf_qidx_min
+            roi_id for roi_id, qidx in zip(roi_ids, qidx_values, strict=True) if qidx >= rf_qidx_min
         ]
 
         return passing_roi_ids
@@ -907,6 +933,8 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
         self.seeds = seeds
         self.colors = plt.cm.nipy_spectral(np.linspace(0, 1,len(self.seeds)))
+
+        self.testset_correl_min = 0.4
  
 
     def plot_seed_respones(self,neuron_id: int,ax: plt.Axes, optimization_window= (10,20),response_window = (21,50)):
@@ -951,23 +979,23 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
     def plot1(self,roi_id: int, field_key: Dict[str,Any] = {}) -> None:
 
-        if roi_id not in self.rois_after_filtering:
-            print("ROI ID not found in filtered rois. Available IDs:", self.rois_after_filtering)
-            return 
+        if roi_id not in self.roi2readout_idx.keys():
+            print(f"ROI {roi_id} not found in the readout indices. Select among the following: \n{self.rois_after_filtering}")
+            return
+
         
         # find neuron_id for roi_id
-        neuron_id = self.rois_after_filtering.index(roi_id)
-
+        neuron_idx = self.roi2readout_idx[roi_id]
 
         # plot temporal kernels in a line plot
         fig,axs = plt.subplots(1,2,figsize=(10, 5))
-        self.plot_temporal_kernels(neuron_id, ax=axs[0])
-        axs[0].set_title(f"Temporal Kernels for ROI {roi_id} (neuron idx {neuron_id})")
+        self.plot_temporal_kernels(neuron_idx, ax=axs[0])
+        axs[0].set_title(f"Temporal Kernels for ROI {roi_id} (neuron idx {neuron_idx})")
 
     
 
         # plot responses 
-        self.plot_seed_respones(neuron_id, ax=axs[1], optimization_window=(10,20), response_window=(21,50))
+        self.plot_seed_respones(neuron_idx, ax=axs[1], optimization_window=(10,20), response_window=(21,50))
         axs[1].set_title(f"Responses to MEIs")
 
         plt.show()
@@ -1003,8 +1031,68 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                     progress_callback(progress)
 
 
-    def get_roi_ids_passing_criterion(self,) -> List[int]:
-        return [2]
+    def get_neuron_idxs_passing_criterion(self) -> List[int]:
+
+        passing_neuron_idxs = []
+        for neuron_idx, corr in self.neuron_testset_correls.items():
+            if corr >= self.testset_correl_min:
+                passing_neuron_idxs.append(neuron_idx)
+        
+        return passing_neuron_idxs
+    
+
+
+
+    def mei_subanalysis(self,
+                        new_session_id: str,
+                        neurons_idxs_to_analyze: List[int],
+                        progress_callback: Optional[Callable] = None,
+                        ) -> None:
+        """lil wrapper for MEI analysys"""
+        if progress_callback is not None:
+            progress_callback(70)
+                    # center readouts in mei generation 
+        
+        # center the readouts
+        self.scaled_means_before_centering = get_model_gaussian_scaled_means(self.model,session= new_session_id)
+        center = Center(target_mean = 0.0)
+        center(self.model)
+        
+        
+        self.neuron_seed_mei_dict = generate_meis_with_n_random_seeds(
+                                        model = self.model,
+                                        new_session_id = new_session_id,
+                                        random_seeds =self.seeds,
+                                        neuron_ids_to_analyze = neurons_idxs_to_analyze, # NOTE: this will optimize each id individually 
+                                        set_model_to_eval_mode = False, # model in training mode for noisy MEIs
+                                    )
+
+            
+
+        ## generate responses for the MEIs and decompose them
+        self.neuron_seed_mei_responses = {neuron_id: {} for neuron_id in self.neuron_seed_mei_dict.keys()}
+        self.neuron_seed_decomposed_meis = {neuron_id: {} for neuron_id in self.neuron_seed_mei_dict.keys()}
+
+        for neuron_id,seed_dict in self.neuron_seed_mei_dict.items():
+            for seed,mei in seed_dict.items():
+
+                # responses 
+                response = get_model_mei_response(model = self.model,
+                                                    mei=mei,
+                                                    session_id = new_session_id,
+                                                    neuron_id = neuron_id,)
+                self.neuron_seed_mei_responses[neuron_id][seed] = response
+
+                # decompose the MEIs
+                temporal_kernels, spatial_kernels, stimulus_time = decompose_mei(stimulus = mei.detach().cpu().numpy())
+                self.neuron_seed_decomposed_meis[neuron_id][seed] = {
+                    "temporal_kernels": temporal_kernels,
+                    "spatial_kernels": spatial_kernels,
+                    "stimulus_time": stimulus_time,
+                }
+
+        if progress_callback is not None:
+            progress_callback(100)
 
     def compute_analysis(self, field_key = {},progress_callback: Optional[Callable] = None) -> None:
 
@@ -1017,66 +1105,39 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
             if progress_callback is not None:
                 progress_callback(30)
+            
             ## model training 
             self.session_dict_raw = self.dj_table_holder('OpenRetinaHoeflingFormat')().extract_data()
             
             # preprocess and filter further 
-            movies_dict = load_stimuli(self.model_configs)
+            self.movies_dict = load_stimuli(self.model_configs)
 
             self.neuron_data_dict = preprocess_for_openretina(self.session_dict_raw,self.model_configs)
 
-
             # load and refine model
-            self.model = train_model_online(self.model_configs,self.neuron_data_dict,movies_dict)
-            
+            self.model,self.neuron_testset_correls = train_model_online(self.model_configs,
+                                                                        self.neuron_data_dict,
+                                                                        self.movies_dict)
+
 
             ## MEI generation
             new_session_id = list(self.session_dict_raw.keys())[0]
-
-            # center readouts in mei generation 
-            self.scaled_means_before_centering = get_model_gaussian_scaled_means(self.model,session= new_session_id)
-            center = Center(target_mean = 0.0)
-            center(self.model)
-                    
-            # for debug: check roi_id to neuron_id mapping
+            
+            # mappings from roi_id to to model_neuron idx
             self.rois_after_filtering: List[int] = self.neuron_data_dict[new_session_id].session_kwargs["roi_ids"].tolist()
 
-            # the neuron_id is the index in the readout I think, so we need a mapping betwen roi_id and neuron_id
-            neurons_ids_to_analyze = list(range(len(self.rois_after_filtering)))
-
-            if progress_callback is not None:
-                progress_callback(70)
-            self.neuron_seed_mei_dict = generate_meis_with_n_random_seeds(
-                                        model = self.model,
-                                        new_session_id = new_session_id,
-                                        random_seeds =self.seeds,
-                                        neuron_ids_to_analyze = neurons_ids_to_analyze, # NOTE: this will optimize each id individually 
-                                        set_model_to_eval_mode = False, # model in training mode for noisy MEIs
-                                    )
-
+            # quality filter neurons
+            neuron_idx_passed_filtering = self.get_neuron_idxs_passing_criterion()
+            if len(neuron_idx_passed_filtering) == 0:
+                raise ValueError("No neurons passed the filtering criteria. Please adjust the criteria or check the data.")
             
+            # map roi_id to model neuron idx
+            self.roi2readout_idx = {roi_id: idx for idx, roi_id in enumerate(self.rois_after_filtering) if idx in neuron_idx_passed_filtering}
 
-            ## generate responses for the MEIs and decompose them
-            self.neuron_seed_mei_responses = {neuron_id: {} for neuron_id in self.neuron_seed_mei_dict.keys()}
-            self.neuron_seed_decomposed_meis = {neuron_id: {} for neuron_id in self.neuron_seed_mei_dict.keys()}
-            for neuron_id,seed_dict in self.neuron_seed_mei_dict.items():
-                for seed,mei in seed_dict.items():
 
-                    # responses 
-                    response = get_model_mei_response(model = self.model,
-                                                      mei=mei,
-                                                      session_id = new_session_id,
-                                                      neuron_id = neuron_id,)
-                    self.neuron_seed_mei_responses[neuron_id][seed] = response
-
-                    # decompose the MEIs
-                    temporal_kernels, spatial_kernels, stimulus_time = decompose_mei(stimulus = mei.detach().cpu().numpy())
-                    self.neuron_seed_decomposed_meis[neuron_id][seed] = {
-                        "temporal_kernels": temporal_kernels,
-                        "spatial_kernels": spatial_kernels,
-                        "stimulus_time": stimulus_time,
-                    }
-
-            if progress_callback is not None:
-                progress_callback(100)
-
+            self.mei_subanalysis(
+                        new_session_id= new_session_id,
+                        neurons_idxs_to_analyze = neuron_idx_passed_filtering,
+                        progress_callback =progress_callback
+                        )
+            

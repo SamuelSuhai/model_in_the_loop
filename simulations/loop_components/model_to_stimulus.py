@@ -217,7 +217,7 @@ def generate_meis_with_n_random_seeds(
 #@time_it
 def train_model_online(cfg: DictConfig,
                        neuron_data_dict:Dict[str,ResponsesTrainTestSplit],
-                       movies_dict:Dict[str,MoviesTrainTestSplit] | MoviesTrainTestSplit) -> BaseCoreReadout:
+                       movies_dict:Dict[str,MoviesTrainTestSplit] | MoviesTrainTestSplit) -> Tuple[BaseCoreReadout,Dict[int, float]]:
     
     log.info("Logging full config:")
     log.info(OmegaConf.to_yaml(cfg))
@@ -293,25 +293,54 @@ def train_model_online(cfg: DictConfig,
 
     ### Testing
     log.info("Starting testing!")
-    short_cyclers = [(n, ShortCycler(dl)) for n, dl in dataloaders.items()]
-    dataloader_mapping = {f"DataLoader {i}": x[0] for i, x in enumerate(short_cyclers)}
-    log.info(f"Dataloader mapping: {dataloader_mapping}")
-    test_results = trainer.test(model, dataloaders=[c for _, c in short_cyclers], ckpt_path="best")
+    neuron_testset_correl_dict = get_single_neuron_test_correlations(dataloaders, model)
+    assert len(neuron_testset_correl_dict) == 1, "Expected only one session in the test set for online training."
+    session_name,neuron_testset_correl = neuron_testset_correl_dict.popitem()  # get first session correlations
+    log.info(f"Test set neuron correlations statistics (mean,std,min,max) for session {session_name}: {[func(list(neuron_testset_correl.values())) for func in [np.mean, np.std, np.min, np.max]]}")
+
+    return model,neuron_testset_correl
 
 
-    return model
 
-# def get_neuron_test_set_correlations(test_results,
-                                         
-#     neuron_correlations = {}
-    
-#     # Extract per-neuron correlations from test results if available
-#     for session_idx, result in enumerate(test_results):
-#         if "neuron_correlations" in result:
-#             session_id = dataloader_mapping.get(f"DataLoader {session_idx}", f"session_{session_idx}")
-#             neuron_correlations[session_id] = result["neuron_correlations"]
+def get_single_neuron_test_correlations(dataloaders , model: BaseCoreReadout) -> Dict[str, Dict[int, float]]:
+    """Calculate the correlation between model predictions and targets for each neuron in each session in the test session."""
 
-                                     
+    neuron_correlations = {}
+
+
+    for session_id, session_dataloader in dataloaders["test"].items():
+        all_preds, all_targets = [], []
+        
+        # Run model on all test batches
+        with torch.no_grad():
+            model.eval()
+            model.to(DEVICE)
+            for batch in session_dataloader:
+                inputs, targets = batch
+                inputs = inputs.to(DEVICE)
+                predictions = model(inputs, data_key=session_id)
+                all_preds.append(predictions.cpu())
+                all_targets.append(targets.cpu())
+        
+        # Concatenate batch results and compute correlations
+        all_preds = torch.cat(all_preds, dim=0).numpy()
+        all_targets = torch.cat(all_targets, dim=0).numpy()
+        
+        # Fast vectorized correlation calculation
+        session_correlations = {}
+        num_neurons = all_targets.shape[-1]
+
+        conv_eats_n_frames = all_targets.shape[1] - all_preds.shape[1]
+        for i in range(num_neurons):
+            pred = all_preds[..., i].flatten()
+            target = all_targets[:,conv_eats_n_frames:, i].flatten()
+            corr = np.corrcoef(pred, target)[0, 1] if np.var(pred) > 0 and np.var(target) > 0 else 0
+            session_correlations[i] = corr
+            
+        neuron_correlations[session_id] = session_correlations
+
+    return neuron_correlations
+        
 
 #@time_it
 def preprocess_for_openretina(raw_neuron_data_dict:Dict[str,Dict[str,Any]],model_condigs) -> Dict[str,ResponsesTrainTestSplit]:
