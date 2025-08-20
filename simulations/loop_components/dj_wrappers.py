@@ -1,7 +1,7 @@
 import os
 import datajoint as dj
 import subprocess
-import shutil
+import torch
 import warnings
 warnings.simplefilter("ignore", FutureWarning)
 from time import sleep 
@@ -13,7 +13,7 @@ from djimaging.utils import plot_utils
 from djimaging.utils.dj_utils import get_primary_key
 from .utils import time_it
 from .model_to_stimulus import (load_stimuli, preprocess_for_openretina,
-                                train_model_online,get_single_neuron_test_correlations,generate_meis_with_n_random_seeds,
+                                train_model_online,reconstruct_mei_from_decomposed,generate_meis_with_n_random_seeds,
                                 decompose_mei, get_model_mei_response,Center,get_model_gaussian_scaled_means
             )
 
@@ -159,14 +159,14 @@ class DJTableHolder:
             'OpenRetinaHoeflingFormat': OpenRetinaHoeflingFormat
         }
 
-        sleep(self.sleep_time_between_table_ops)
+        
         from djimaging.tables.classifier.rgc_classifier import prepare_dj_config_rgc_classifier
         prepare_dj_config_rgc_classifier(self.rgc_output_folder)
 
         from djimaging.utils.dj_utils import activate_schema
 
         activate_schema(schema=self.schema) #, create_schema=True, create_tables=True)
-        sleep(self.sleep_time_between_table_ops)
+        
 
 
             
@@ -182,23 +182,23 @@ class DJTableHolder:
         dj.config['schema_name'] = self.schema_name
         dj.config['enable_python_native_blobs'] = True
         dj.config["display.limit"] = 20
-        sleep(self.sleep_time_between_table_ops)
+        
 
         print("schema_name:", dj.config['schema_name'])
         dj.conn()
-        sleep(self.sleep_time_between_table_ops)
+        
         
         
 
     def set_params_and_userinfo(self) -> None:
-
+        
         # make sure tables are empty 
         if len(self('UserInfo')()) == 0:
             self('UserInfo')().upload_user(self.userinfo)
-            sleep(self.sleep_time_between_table_ops)
+            
 
         self('RawDataParams')().add_default()
-        sleep(self.sleep_time_between_table_ops)
+        
 
         # TODO extract hard coded values to config
         self('RawDataParams')().update1(dict(
@@ -207,7 +207,7 @@ class DJTableHolder:
             from_raw_data=int(1),
             igor_roi_masks='no',
             ))
-        sleep(self.sleep_time_between_table_ops)
+        
 
         preprocess_params =self.table_parameters.get("PreprocessParams", {})
         if isinstance(preprocess_params, ListConfig):
@@ -241,6 +241,9 @@ class DJTableHolder:
         self('CascadeParams')().add_default(model_name = 'Global_EXC_7.8125Hz_smoothing200ms_causalkernel') # for spike estimation itself
 
     def add_all_stimuli(self) -> None:
+
+
+        
         import h5py
 
         with h5py.File("/gpfs01/euler/data/Resources/Stimulus/noise.h5", "r") as f:
@@ -281,55 +284,57 @@ class DJTableHolder:
         5) setting geenral pipeline parameters and user infor
         """
         
-        self.load_config()
-        sleep(self.sleep_time_between_table_ops)
-        
-        
+        self.load_config()        
         self.load_tables()
-        sleep(self.sleep_time_between_table_ops)
 
-
-        self.add_all_stimuli()
-        sleep(self.sleep_time_between_table_ops)
+        if len(self("UserInfo")()) > 0:
+            warnings.warn("\nSome DJ tables (like UserInfo) are not empty, skipping adding new entries from config.\nMake sure this is wanted. Call clear_tables(`all`) if you want different data in there")
+            print("Done reconnecting. Skipping adding new entries from config.")
+            return
         
+        self.add_all_stimuli()
         self.set_params_and_userinfo()
-        sleep(self.sleep_time_between_table_ops)
+        
+
+        print("Done setting up!")
 
 
 
-    def clear_tables(self,target: str = "all", field_key : Dict[str,str] | None = None) -> None:
+    def clear_tables(self,target: str = "all", 
+                     field_key : Dict[str,str] | None = None,
+                     safemode=True) -> None:
         """
         Clear tables.
         This is useful to start a new iteration with a clean slate.
         """
         if target == "all":
             # delete entries of userinfo will result in all being deleted
-            self('UserInfo')().delete()
+            self('UserInfo')().delete(safemode=safemode)
 
             # delete Stimulus, all params tables and  classifier tables as these do not depend on userinfo
-            self('Stimulus')().delete()
-            self('RawDataParams')().delete()
-            self('PreprocessParams')().delete()
-            self('ClassifierMethod')().delete()
-            self('Classifier')().delete()
-            self('ClassifierTrainingData')().delete()
-            self('CascadeTraceParams')().delete()
-            self('CascadeParams')().delete()
-            self('DNoiseTraceParams')().delete()
+            self('Stimulus')().delete(safemode=safemode)
+            self('RawDataParams')().delete(safemode=safemode)
+            self('PreprocessParams')().delete(safemode=safemode)
+            self('ClassifierMethod')().delete(safemode=safemode)
+            self('Classifier')().delete(safemode=safemode)
+            self('ClassifierTrainingData')().delete(safemode=safemode)
+            self('CascadeTraceParams')().delete(safemode=safemode)
+            self('CascadeParams')().delete(safemode=safemode)
+            self('DNoiseTraceParams')().delete(safemode=safemode)
 
-            self('STAParams')().delete()
-            self('SplitRFParams')().delete()
+            self('STAParams')().delete(safemode=safemode)
+            self('SplitRFParams')().delete(safemode=safemode)
 
         
         elif target == "experiment":
             # delete all entries of the current experiment
-            self('Experiment')().delete()
+            self('Experiment')().delete(safemode=safemode)
 
         elif target == "field":
             # delete all entries of the current field
             if field_key is None:
                 raise ValueError("field_key must be provided when target is 'field'")
-            (self('Field')() & field_key).delete()
+            (self('Field')() & field_key).delete(safemode=safemode)
         
 
 
@@ -395,16 +400,12 @@ class Preprocessor:
             roi_canvas.exec_auto_shift()
 
 
-        # save masks
-        roi_canvas.exec_save_all_to_file()
-
         # add to database
         roi_canvas.insert_database(roi_mask_tab=self.dj_table_holder('RoiMask'), field_key=field_key)
 
+        # save masks
+        roi_canvas.exec_save_all_to_file()
 
-        if self.dj_table_holder.plot_results:
-            self.dj_table_holder('RoiMask')().plot1()
-            plt.gcf().savefig(os.path.join(self.dj_table_holder.repo_directory,"figures",f"roi_mask_{field_key}.png"), dpi=300, bbox_inches='tight')
     
     def add_iteration_rois(self) -> None:
         self.dj_table_holder('Roi')().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
@@ -589,8 +590,11 @@ class QualityAndTypeWrapper(DJComputeWrapper):
             raise ValueError("ChirpQI or OsDsIndexes table is empty for the given field_key")
         
         # Fetch all roi_ids and their corresponding d_qi and qidx values
-        roi_ids, qidx_values = chirp_qi_table.fetch('roi_id', 'qidx')
+        roi_ids_chirp, qidx_values = chirp_qi_table.fetch('roi_id', 'qidx')
+        chirp_data_dict = {roi_id: qidx for roi_id, qidx in zip(roi_ids_chirp, qidx_values)}
+        
         roi_ids_mb,d_qi_values = ori_dir_qi_table.fetch('roi_id', 'd_qi')
+        ori_dir_data_dict = {roi_id: d_qi for roi_id, d_qi in zip(roi_ids_mb, d_qi_values)}
 
         celltype_table = self.dj_table_holder('CelltypeAssignment')() & field_key
         if len(celltype_table) == 0:
@@ -598,22 +602,21 @@ class QualityAndTypeWrapper(DJComputeWrapper):
         
         # create a criterion
         roi_ids_celltype,celltype_data,confidence_data = celltype_table.fetch('roi_id','celltype','confidence')
-        assert all([id1 == id2 ==id3 for id1,id2,id3 in zip(roi_ids,roi_ids_celltype,roi_ids_mb)]) , "Missmatch roi nr"
-        is_correct_type = np.isin(celltype_data, celltypes).tolist()
-
+        celltype_data_dict = {roi_id: celltype for roi_id, celltype in zip(roi_ids_celltype, celltype_data)}
+        
         #  get the confidence of assigned group which is the max 
         confidence_scors = [all_confidences.max() for all_confidences in confidence_data]
-        
+        confidence_data_dict = {roi_id: confidence for roi_id, confidence in zip(roi_ids_celltype, confidence_scors)}
 
         # Filter roi_ids based on the criteria
         passing_roi_ids = []
-        for roi_id, d_qi, qidx, confidence, is_good_type in zip(roi_ids, 
-                                                               d_qi_values, 
-                                                               qidx_values,
-                                                               confidence_scors,
-                                                               is_correct_type, strict=True):
+        for roi_id in set(roi_ids_mb + roi_ids_chirp + roi_ids_celltype):
+            d_qi = ori_dir_data_dict.get(roi_id, 0.0)  # Default to 0.0 if not found
+            qidx = chirp_data_dict.get(roi_id, 0.0)  # Default to 0.0 if not found
+            confidence = confidence_data_dict.get(roi_id, 0.0)  # Default to 0.0 if not found
+            celltype = celltype_data_dict.get(roi_id, -1) 
             
-            if (d_qi >= d_qi_min or qidx >= qidx_min) and (confidence >= classifier_confidence) and is_good_type:
+            if (d_qi >= d_qi_min or qidx >= qidx_min) and (confidence >= classifier_confidence) and celltype in celltypes:
                 passing_roi_ids.append(roi_id)
 
 
@@ -790,12 +793,7 @@ class STAWrapper(DJComputeWrapper):
         """
         Compute the STA analysis.
         """
-        complete_restriction = " AND ".join([f"{k}='{v}'" for k,v in field_key.items()])
-
-        if roi_id_subset is not None:
-            roi_restriction_string = f"roi_id in {str(tuple(roi_id_subset))}" if len(roi_id_subset) >= 2 else f"roi_id={str(roi_id_subset[0])}"
-            complete_restriction =  complete_restriction + " AND " + roi_restriction_string
-
+        complete_restriction = get_rois_in_field_restriction_str(field_key, roi_id_subset)
         
         if len(self.dj_table_holder('STA')() & complete_restriction) == 0:
             if progress_callback is not None:
@@ -824,17 +822,13 @@ class STAWrapper(DJComputeWrapper):
         """
         Check if the required tables are populated in the database.
         """
-        if roi_id_subset is None:
-            complete_restriction = field_key
-        else:
-            roi_restriction_string = f"roi_id in {str(tuple(roi_id_subset))}" if len(roi_id_subset) >= 2 else f"roi_id={str(roi_id_subset[0])}"
-            complete_restriction =  field_key & roi_restriction_string
+        complete_restriction = get_rois_in_field_restriction_str(field_key, roi_id_subset)
 
         for table_name in self.requires_tables:
             if len(self.dj_table_holder(table_name)() & complete_restriction) == 0:
                 
                 # populate the necessary tables
-                (self.dj_table_holder(table_name)() &  complete_restriction).populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+                self.dj_table_holder(table_name)().populate(complete_restriction,processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
     
     def get_roi_ids_passing_criterion(self, 
                                       field_key: Dict[str, Any], 
@@ -865,8 +859,11 @@ class STAWrapper(DJComputeWrapper):
     def plot1(self,roi_id: int,field_key={},show = True) -> None:
 
         restricted_split_rf = (self.dj_table_holder('SplitRF')() & field_key & {'roi_id': roi_id})
-
-        assert len(restricted_split_rf) == 1, f"Expected exactly one SplitRF for roi_id {roi_id}, found {len(restricted_split_rf)}"
+        if len(restricted_split_rf) == 0:
+            print(f"No RF computed for roi_id {roi_id}.")
+            return
+        elif len(restricted_split_rf) > 1:
+            raise ValueError(f"Expected exactly one SplitRF for roi_id {roi_id}, found {len(restricted_split_rf)}")
 
         # plot it and 
         key = get_primary_key(table=restricted_split_rf, key=None)
@@ -914,10 +911,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         
         self.dj_table_holder = dj_table_holder
 
-        self.requires_tables = [
-            "CascadeTraces",
-            "CascadeSpikes",
-        ]
+      
         self.model_configs = model_configs
 
         # to store the data: the key is the index in the readout and not the roi_id
@@ -935,7 +929,9 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         self.colors = plt.cm.nipy_spectral(np.linspace(0, 1,len(self.seeds)))
 
         self.testset_correl_min = 0.4
- 
+
+        self.reconstruct_mei = True
+
 
     def plot_seed_respones(self,neuron_id: int,ax: plt.Axes, optimization_window= (10,20),response_window = (21,50)):
         """
@@ -1009,26 +1005,39 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
     def name(self) -> str:
         return "Random Seed MEI"
 
-    def check_requirements(self, field_key, progress_callback: Optional[Callable]) -> None:
+    def check_requirements(self, 
+                           field_key: Dict[str, Any],
+                           roi_id_subset: Optional[List[int]] = None,
+                           progress_callback: Optional[Callable] = None) -> None:
         """
         Check if the required tables are populated in the database.
         """
+
+        # construct the complete restriction string
+        complete_restriction = get_rois_in_field_restriction_str(field_key, roi_id_subset)
 
         progress: int = 0 
         
         if progress_callback is not None:
             progress_callback(0)
 
-        for table_name in self.requires_tables:
-            if len(self.dj_table_holder(table_name)() & field_key) == 0:
-                
-                # populate the necessary tables
-                self.dj_table_holder(table_name)().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
-                sleep(self.dj_table_holder.sleep_time_between_table_ops)
-
-                progress += 15
-                if progress_callback is not None:
-                    progress_callback(progress)
+        # Traces
+        restricted_traces = self.dj_table_holder("CascadeTraces")() & complete_restriction
+        if len(restricted_traces) == 0:
+            # populate the traces table
+            self.dj_table_holder("CascadeTraces")().populate(complete_restriction, processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+            progress += 15
+            if progress_callback is not None:
+                progress_callback(progress)
+            
+            
+            # spikes: no restriction, since the trstriction is in traces already and somehow
+            # it has different primary keys
+            self.dj_table_holder("CascadeSpikes")().populate( processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+            progress += 15
+            if progress_callback is not None:
+                progress_callback(progress)
+    
 
 
     def get_neuron_idxs_passing_criterion(self) -> List[int]:
@@ -1040,8 +1049,26 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         
         return passing_neuron_idxs
     
+    def reconstruct_all_mei_from_decomposition(self,
+                                           ) -> None:
+        """
+        Reconstructs the MEI from the decomposition for a given neuron and seed.
+        """
+        neuron_seed_mei_reconstructed = {}
+        for neuron_id, seed_dict in self.neuron_seed_decomposed_meis.items():
+            neuron_seed_mei_reconstructed[neuron_id] = {}
+            for seed, decomposition in seed_dict.items():
+                # reconstruct the MEI from the decomposition
+                temporal_kernels = decomposition['temporal_kernels']
+                spatial_kernels = decomposition['spatial_kernels']
 
+                reconstruction = reconstruct_mei_from_decomposed(
+                    temporal_kernels=temporal_kernels,
+                    spatial_kernels=spatial_kernels,)
+                neuron_seed_mei_reconstructed[neuron_id][seed] = reconstruction
 
+        self.neuron_seed_mei_dict = neuron_seed_mei_reconstructed
+                
 
     def mei_subanalysis(self,
                         new_session_id: str,
@@ -1049,6 +1076,16 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                         progress_callback: Optional[Callable] = None,
                         ) -> None:
         """lil wrapper for MEI analysys"""
+
+        if len(neurons_idxs_to_analyze) == 0:
+                raise ValueError("No neurons to perform MEI analysis on.\
+                                 \nSelect less strtict filtering criterium and call mei_subanalysis again.\
+                                 \nTestset correlations: {}".format(self.neuron_testset_correls))
+            
+        # map roi_id to model neuron idx
+        self.roi2readout_idx = {roi_id: idx for idx, roi_id in enumerate(self.rois_after_filtering) if idx in neurons_idxs_to_analyze}
+
+
         if progress_callback is not None:
             progress_callback(70)
                     # center readouts in mei generation 
@@ -1072,16 +1109,9 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         ## generate responses for the MEIs and decompose them
         self.neuron_seed_mei_responses = {neuron_id: {} for neuron_id in self.neuron_seed_mei_dict.keys()}
         self.neuron_seed_decomposed_meis = {neuron_id: {} for neuron_id in self.neuron_seed_mei_dict.keys()}
-
+        self.neuron_seed_mei_reconstructed = {neuron_id: {} for neuron_id in self.neuron_seed_mei_dict.keys()}
         for neuron_id,seed_dict in self.neuron_seed_mei_dict.items():
             for seed,mei in seed_dict.items():
-
-                # responses 
-                response = get_model_mei_response(model = self.model,
-                                                    mei=mei,
-                                                    session_id = new_session_id,
-                                                    neuron_id = neuron_id,)
-                self.neuron_seed_mei_responses[neuron_id][seed] = response
 
                 # decompose the MEIs
                 temporal_kernels, spatial_kernels, stimulus_time = decompose_mei(stimulus = mei.detach().cpu().numpy())
@@ -1090,18 +1120,36 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                     "spatial_kernels": spatial_kernels,
                     "stimulus_time": stimulus_time,
                 }
+                if self.reconstruct_mei:
+                    reconstruction = reconstruct_mei_from_decomposed(
+                                temporal_kernels=temporal_kernels,
+                                spatial_kernels=spatial_kernels,)
+                    mei_for_response = torch.tensor(reconstruction,dtype=torch.float32).to(self.model.device)
+                else:
+                    mei_for_response = mei 
+
+                # responses 
+                response = get_model_mei_response(model = self.model,
+                                                    mei=mei_for_response,
+                                                    session_id = new_session_id,
+                                                    neuron_id = neuron_id,)
+                self.neuron_seed_mei_responses[neuron_id][seed] = response
 
         if progress_callback is not None:
             progress_callback(100)
 
-    def compute_analysis(self, field_key = {},progress_callback: Optional[Callable] = None) -> None:
+    def compute_analysis(self, field_key = {},
+                         roi_id_subset: Optional[List[int]] = None,
+                         progress_callback: Optional[Callable] = None) -> None:
 
         # extract data in hoefling format from DB 
         if len(self.dj_table_holder('OpenRetinaHoeflingFormat')() & field_key) == 0:
             if progress_callback is not None:
                 progress_callback(0)
 
-            self.check_requirements(field_key,progress_callback= progress_callback)
+            self.check_requirements(field_key,
+                                    roi_id_subset=roi_id_subset,
+                                    progress_callback= progress_callback)
 
             if progress_callback is not None:
                 progress_callback(30)
@@ -1128,16 +1176,31 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
             # quality filter neurons
             neuron_idx_passed_filtering = self.get_neuron_idxs_passing_criterion()
-            if len(neuron_idx_passed_filtering) == 0:
-                raise ValueError("No neurons passed the filtering criteria. Please adjust the criteria or check the data.")
             
-            # map roi_id to model neuron idx
-            self.roi2readout_idx = {roi_id: idx for idx, roi_id in enumerate(self.rois_after_filtering) if idx in neuron_idx_passed_filtering}
-
 
             self.mei_subanalysis(
                         new_session_id= new_session_id,
                         neurons_idxs_to_analyze = neuron_idx_passed_filtering,
                         progress_callback =progress_callback
                         )
+        else:
+            print("OpenRetinaHoeflingFormat table is already populated for the given field_key. Skipping analysis.")
             
+
+
+
+
+
+
+
+def get_rois_in_field_restriction_str(field_key: Dict[str, Any],roi_id_subset:Optional[List[int]] = None) -> str:
+    """
+    Constructs a restriction string for the given field_key and optional roi_id_subset.
+    """
+    
+    complete_restriction = " AND ".join([f"{k}='{v}'" for k,v in field_key.items()])
+    if roi_id_subset is not None:
+        roi_restriction_string = f"roi_id in {str(tuple(roi_id_subset))}" if len(roi_id_subset) >= 2 else f"roi_id={str(roi_id_subset[0])}"
+        complete_restriction =  complete_restriction + " AND " + roi_restriction_string
+
+    return complete_restriction

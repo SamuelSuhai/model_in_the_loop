@@ -142,12 +142,42 @@ def decompose_mei(stimulus: np.ndarray, frame_rate_model: float = 30.0) -> Tuple
     temporal_kernels = []
     spatial_kernels = []
     for color_idx in range(num_color_channels):
-        temporal, spatial, _ = decompose_kernel(stimulus[color_idx])
+        temporal, spatial, singular_values = decompose_kernel(stimulus[color_idx])
         temporal_kernels.append(temporal)
         spatial_kernels.append(spatial)
 
     return temporal_kernels, spatial_kernels, stimulus_time
 
+def reconstruct_spatiotemporal_kernel(
+        temporal_kernel: np.ndarray,
+        spatial_kernel: np.ndarray,) -> np.ndarray:
+    
+
+    recon = temporal_kernel[:, None, None] * spatial_kernel[None, :, :]
+    assert recon.shape == STIMULUS_SHAPE[2:]
+
+    return recon
+
+def reconstruct_mei_from_decomposed(
+        temporal_kernels: List[np.ndarray],
+        spatial_kernels: List[np.ndarray],
+    ) -> np.ndarray:
+    assert len(temporal_kernels) == len(spatial_kernels), "Number of temporal and spatial kernels must match"
+    num_color_channels = len(temporal_kernels)
+    dim_y, dim_x = spatial_kernels[0].shape
+    time_steps = temporal_kernels[0].shape[0]
+    
+    
+    reconstructed_mei = np.zeros((num_color_channels, time_steps, dim_y, dim_x))
+
+    for color_idx in range(num_color_channels):
+        reconstructed_mei[color_idx] = reconstruct_spatiotemporal_kernel(
+            temporal_kernels[color_idx], spatial_kernels[color_idx]
+        )
+    assert reconstructed_mei.shape == STIMULUS_SHAPE[1:]
+
+    return reconstructed_mei
+    
 
 def get_model_mei_response(model: BaseCoreReadout, mei: torch.Tensor, session_id: str, neuron_id: int) -> np.ndarray:
     
