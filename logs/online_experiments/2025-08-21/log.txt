@@ -1,0 +1,4 @@
+Log started on 2025-08-21
+2025-08-21 20:40:28 - MEIs ids shuffled order: ['roi_93_seed_222', 'roi_48_seed_222', 'roi_81_seed_111', 'roi_51_seed_222', 'roi_39_seed_111', 'roi_39_seed_222', 'roi_102_seed_111', 'roi_81_seed_222', 'roi_45_seed_111', 'roi_21_seed_111', 'roi_27_seed_111', 'roi_51_seed_111', 'roi_27_seed_222', 'roi_45_seed_222', 'roi_42_seed_222', 'roi_78_seed_222', 'roi_21_seed_222', 'roi_24_seed_111', 'roi_84_seed_111', 'roi_24_seed_222', 'roi_63_seed_222', 'roi_84_seed_222', 'roi_78_seed_111', 'roi_60_seed_111', 'roi_102_seed_222', 'roi_63_seed_111', 'roi_36_seed_222', 'roi_42_seed_111', 'roi_48_seed_111', 'roi_93_seed_111', 'roi_60_seed_222', 'roi_36_seed_111'].
+2025-08-21 20:40:28 - Order of extracted RF peaks: [ 21  24  27  36  39  42  45  48  51  60  63  78  81  84  93 102].
+2025-08-21 20:40:30 - Created avi file from termsor of shape torch.Size([2, 2280, 72, 64]) at /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop/mei_test_stimulus.avi.

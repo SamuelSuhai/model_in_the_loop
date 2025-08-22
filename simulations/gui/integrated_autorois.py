@@ -390,7 +390,8 @@ class InteractiveRoiCanvas(RoiCanvasData):
             dj_table_holder: DJTableHolder,
             dj_preprocessor: Preprocessor,
             all_dj_wrappers: List[DJComputeWrapper],
-            field_key=None,
+            field_key= Dict[str, Any],  # field key to select the data
+            take_roi_rgba_from_this_analysis: Optional[str] = None, # can select which analysis to take the roi color and alpha from
             pres_key= None,
             bg_dict=None,
             main_stim_idx=0,
@@ -406,6 +407,13 @@ class InteractiveRoiCanvas(RoiCanvasData):
         self.dj_preprocessor = dj_preprocessor
         self.dj_wrappers_dict = {wrapper.name: wrapper for wrapper in all_dj_wrappers}
 
+        if (not isinstance(take_roi_rgba_from_this_analysis, str) and take_roi_rgba_from_this_analysis is not None) or \
+            not take_roi_rgba_from_this_analysis in [wrapper.name for wrapper in all_dj_wrappers]:
+            raise ValueError(f"take_roi_rgba_from_this_analysis must be a string from {list(self.dj_wrappers_dict.keys())} or None,\
+                              got {take_roi_rgba_from_this_analysis}. Use wrapper.name here ")
+        assert hasattr([wrapper for wrapper in all_dj_wrappers if wrapper.name == take_roi_rgba_from_this_analysis][0],"get_roi2rgb_and_alpha_255_map"),\
+            f"Wrapper {take_roi_rgba_from_this_analysis} does not have a method get_roi2rgb_and_alpha_255_map, which is required to take the roi color and alpha from this analysis."
+        self.take_roi_rgba_from_this_analysis = take_roi_rgba_from_this_analysis
 
 
 
@@ -1510,10 +1518,11 @@ class InteractiveRoiCanvas(RoiCanvasData):
         # Update the analysis plot with the data we got
         self.update_analysis_plot()
         
-        # change roi coloring
-        if hasattr(self.dj_wrappers_dict[self._selected_analysis_type],'get_roi2rgb_and_alpha_255_map') and not hasattr(self, 'roi2rgb255_map'):
+        # change roi coloring to the one determined by the analysis the user set
+        all_roi_ids = (self.dj_table_holder("Roi") & self.field_key).fetch("roi_id")
+        if not hasattr(self, 'roi2rgb255_map') and self._selected_analysis_type == self.take_roi_rgba_from_this_analysis:
             self.log(f'Got roi2rgba_map for {self._selected_analysis_type}')
-            roi2rgb255_map,roi2alpha255_map = self.dj_wrappers_dict[self._selected_analysis_type].get_roi2rgb_and_alpha_255_map(field_key=self.field_key)
+            roi2rgb255_map,roi2alpha255_map = self.dj_wrappers_dict[self._selected_analysis_type].get_roi2rgb_and_alpha_255_map(field_key=self.field_key,all_roi_ids= all_roi_ids)
             self.roi2rgb255_map = roi2rgb255_map
             self.roi2alpha255_map = roi2alpha255_map
             

@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
 from djimaging.utils import plot_utils
 from djimaging.utils.dj_utils import get_primary_key
+from djimaging.utils.mask_utils import to_roi_mask_file
+
 from .utils import time_it
 from .model_to_stimulus import (load_stimuli, preprocess_for_openretina,
                                 train_model_online,reconstruct_mei_from_decomposed,generate_meis_with_n_random_seeds,
@@ -109,7 +111,11 @@ class DJTableHolder:
                 CascadeTraceParams, CascadeParams, CascadeTraces, CascadeSpikes,
                 # RF
                 DNoiseTraceParams,DNoiseTrace,STAParams,STA, SplitRFParams,SplitRF,FitGauss2DRF,
-                OpenRetinaHoeflingFormat, schema,
+                
+                # OpenRetina
+                OpenRetinaHoeflingFormat,OnlineMEIs,OnlineTrainedModel,
+                
+                schema,
             )
         
         self.schema = schema
@@ -156,16 +162,18 @@ class DJTableHolder:
             
 
             # OpenRetina
-            'OpenRetinaHoeflingFormat': OpenRetinaHoeflingFormat
+            'OpenRetinaHoeflingFormat': OpenRetinaHoeflingFormat,
+            'OnlineMEIs': OnlineMEIs,
+            'OnlineTrainedModel': OnlineTrainedModel,
         }
 
-        
+        sleep(self.sleep_time_between_table_ops)
         from djimaging.tables.classifier.rgc_classifier import prepare_dj_config_rgc_classifier
         prepare_dj_config_rgc_classifier(self.rgc_output_folder)
+        sleep(self.sleep_time_between_table_ops)
 
         from djimaging.utils.dj_utils import activate_schema
-
-        activate_schema(schema=self.schema) #, create_schema=True, create_tables=True)
+        activate_schema(schema=self.schema, create_schema=True, create_tables=True)
         
 
 
@@ -301,7 +309,7 @@ class DJTableHolder:
 
 
     def clear_tables(self,target: str = "all", 
-                     field_key : Dict[str,str] | None = None,
+                     field_key : Dict[str,str] = {},
                      safemode=True) -> None:
         """
         Clear tables.
@@ -332,9 +340,33 @@ class DJTableHolder:
 
         elif target == "field":
             # delete all entries of the current field
-            if field_key is None:
+            if field_key == {}:
                 raise ValueError("field_key must be provided when target is 'field'")
             (self('Field')() & field_key).delete(safemode=safemode)
+        
+        elif target == "rois":
+            (self('RoiMask')() & field_key).delete(safemode=safemode)
+
+        # remove any roi masks saved in the directory
+        all_field_presentation_files = (self("Presentation")() & field_key).fetch("pres_data_file")
+        all_roi_mask_files = [to_roi_mask_file(file, roi_mask_dir="ROIs") for file in all_field_presentation_files]
+        if len(all_roi_mask_files) == 0:
+            print("No ROI mask files found to delete.")
+            return
+        # prompt user to confirm deletion
+        if safemode:
+            confirm = input(f"Are you sure you want to remove ROI maskfiles \n{"\n".join(all_roi_mask_files)} ROI mask files? (yes/no): ")
+            if confirm.lower() != 'yes':
+                print("Deletion cancelled.")
+                return
+
+        # remove all roi mask files
+        for file in all_roi_mask_files:
+            if os.path.exists(file):
+                os.remove(file)
+                print(f"Removed file: {file}")
+        
+
         
 
 
@@ -373,7 +405,7 @@ class Preprocessor:
         self.dj_table_holder('Presentation')().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
         sleep(self.dj_table_holder.sleep_time_between_table_ops)
         
-    def add_iteration_roi_mask(self, field_key = {}) -> None:
+    def add_iteration_roi_mask(self, field_key = {},save_to_file = False) -> None:
         """
         Add ROIs for the current iteration by drawing and inserting them into the database.
         NOTE that this will not be called from the GUI, but its for when we use this from the command line
@@ -385,7 +417,7 @@ class Preprocessor:
             assert len(missing_fields) == 1 , f"Expecting exatly no missing fields but found {len(missing_fields)}"
             field_key = missing_fields[0]
             
-
+        assert len(self.dj_table_holder('RoiMask')() & field_key) == 0, f"RoiMask table already has entries for field_key {field_key}. Use clear_tables('rois') to remove them first."
 
         roi_canvas = self.dj_table_holder('RoiMask')().draw_roi_mask(field_key=field_key, canvas_width=30)
         
@@ -404,7 +436,8 @@ class Preprocessor:
         roi_canvas.insert_database(roi_mask_tab=self.dj_table_holder('RoiMask'), field_key=field_key)
 
         # save masks
-        roi_canvas.exec_save_all_to_file()
+        if save_to_file:
+            roi_canvas.exec_save_all_to_file()
 
     
     def add_iteration_rois(self) -> None:
@@ -743,10 +776,12 @@ class QualityAndTypeWrapper(DJComputeWrapper):
                 self.dj_table_holder(table_name)().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
                 sleep(self.dj_table_holder.sleep_time_between_table_ops)
 
-    def get_roi2rgb_and_alpha_255_map(self,field_key: Dict[str, Any]) -> Tuple[Dict[int, np.ndarray], Dict[int, float]]:
+    def get_roi2rgb_and_alpha_255_map(self,
+                                      field_key: Dict[str, Any],
+                                      all_roi_ids: List[int]) -> Tuple[Dict[int, np.ndarray], Dict[int, float]]:
         """
-        Get two mappings: one for roi to rgb based on celltype and one roi to alpha based on chirpQI
-        
+        Get two mappings: one for roi to rgb based on celltype and one roi to alpha based on chirpQI.
+        all_roi_ids is a list of roi_ids that are in the canvas so we cover all rois in the cavas with the color code.
 
         """
         
@@ -759,6 +794,16 @@ class QualityAndTypeWrapper(DJComputeWrapper):
         chirp_qi_table = self.dj_table_holder('ChirpQI')() & field_key
         chirp_qi_data = chirp_qi_table.fetch('roi_id', 'qidx', as_dict=True)
         roi2alpha = {data['roi_id']: self.qi2alpha255(data['qidx']) for data in chirp_qi_data}
+
+        # ensure all roi_ids are covered
+        for roi_id in all_roi_ids:
+            if roi_id not in roi2rgb255:
+                # default color for missing roi_ids
+                roi2rgb255[roi_id] = np.array([128, 128, 128])
+            if roi_id not in roi2alpha:
+                # default alpha for missing roi_ids
+                roi2alpha[roi_id] = self.qi2alpha255(0.0)
+        
 
         return roi2rgb255, roi2alpha
          
@@ -795,26 +840,25 @@ class STAWrapper(DJComputeWrapper):
         """
         complete_restriction = get_rois_in_field_restriction_str(field_key, roi_id_subset)
         
-        if len(self.dj_table_holder('STA')() & complete_restriction) == 0:
-            if progress_callback is not None:
-                progress_callback(0)
-            
-            self.dj_table_holder('DNoiseTrace')().populate(complete_restriction,processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
-            
+        if progress_callback is not None:
+            progress_callback(0)
+        
+        self.dj_table_holder('DNoiseTrace')().populate(complete_restriction,processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+        
 
-            if progress_callback is not None:
-                progress_callback(30)
-            self.dj_table_holder('STA')().populate(complete_restriction,processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+        if progress_callback is not None:
+            progress_callback(30)
+        self.dj_table_holder('STA')().populate(complete_restriction,processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
 
-            if progress_callback is not None:
-                progress_callback(80)
-            self.dj_table_holder('SplitRF')().populate(complete_restriction,processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+        if progress_callback is not None:
+            progress_callback(80)
+        self.dj_table_holder('SplitRF')().populate(complete_restriction,processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
 
-            self.dj_table_holder("FitGauss2DRF")().populate(complete_restriction,processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
-            
+        self.dj_table_holder("FitGauss2DRF")().populate(complete_restriction,processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+        
 
-            if progress_callback is not None:
-                progress_callback(100)
+        if progress_callback is not None:
+            progress_callback(100)
 
     def check_requirements(self, 
                            field_key,
@@ -920,9 +964,6 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         self.neuron_seed_decomposed_meis = {}
         self.model = None
 
-        # these are the roi ids that were kept after filtering
-        self.rois_after_filtering: List[int] = []
-
         self.display_channel = 1 # UV channel 
 
         self.seeds = seeds
@@ -975,13 +1016,13 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
     def plot1(self,roi_id: int, field_key: Dict[str,Any] = {}) -> None:
 
-        if roi_id not in self.roi2readout_idx.keys():
-            print(f"ROI {roi_id} not found in the readout indices. Select among the following: \n{self.rois_after_filtering}")
+        if roi_id not in self.roi2readout_idx_wmeis.keys():
+            print(f"ROI {roi_id} does not have an MEI. Select among the following: \n{list(self.roi2readout_idx_wmeis.keys())}")
             return
 
         
         # find neuron_id for roi_id
-        neuron_idx = self.roi2readout_idx[roi_id]
+        neuron_idx = self.roi2readout_idx_wmeis[roi_id]
 
         # plot temporal kernels in a line plot
         fig,axs = plt.subplots(1,2,figsize=(10, 5))
@@ -1068,6 +1109,116 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                 neuron_seed_mei_reconstructed[neuron_id][seed] = reconstruction
 
         self.neuron_seed_mei_dict = neuron_seed_mei_reconstructed
+    
+
+    def get_roi2rgb_and_alpha_255_map(self,
+                                      field_key: Dict[str, Any],
+                                      all_roi_ids:List[int]) -> Tuple[Dict[int, np.ndarray], Dict[int, float]]:
+        """
+        Get two mappings: one for roi to rgb based on whether there is an mei.
+        all_roi_ids: a list of all roi ids that should be included in the mapping.
+        
+        """
+        rgb_of_included = np.array([255,0,0]) # red for included rois
+        rgb_nonincluded = np.array([122,122,122]) # gray for non-included rois
+        alpha_of_included = 122.0 # full alpha for included rois
+        alpha_nonincluded = 20.0
+        
+
+        roi2rgb255 = {roi: rgb_of_included if roi in self.roi2readout_idx_wmeis.keys() else rgb_nonincluded
+                      for roi in all_roi_ids}
+        roi2alpha = {roi: alpha_of_included if roi in self.roi2readout_idx_wmeis.keys() else alpha_nonincluded
+                     for roi in all_roi_ids}
+
+        return roi2rgb255, roi2alpha
+
+    def upload_to_db(self,field_key = {}) -> None:
+        """
+        Uploads the generated MEIs and their responses to the database.
+        """
+        if len(self.neuron_seed_mei_dict) == 0:
+            raise ValueError("No MEIs generated. Call mei_subanalysis first.")
+        
+        if field_key == {}:
+            # fetch from db 
+            field_table = self.dj_table_holder('Field')()
+            if len(field_table) != 1:
+                raise ValueError("Expecte dexactly one field key.")
+            field_key = self.dj_table_holder('Field')().proj().fetch(as_dict=True)[0]
+        
+        # get openretina hoefling format session_name and data
+        session_name = (self.dj_table_holder("OpenRetinaHoeflingFormat")() & field_key).fetch1("session_name")
+        session_data_dict = (self.dj_table_holder("OpenRetinaHoeflingFormat")() & field_key).fetch1("session_data_dict")
+
+        ## the meis 
+        # mapping readout idx with mei to rois
+        readout_idx_wmei2rois = {readout_idx:roi_id for roi_id,readout_idx in self.roi2readout_idx_wmeis.items()}
+        
+        for readout_idx, seed_mei_dict in self.neuron_seed_mei_dict.items():
+            for seed, mei in seed_mei_dict.items():
+                
+                # get the corresponding roi_id
+                roi_id = readout_idx_wmei2rois[readout_idx]
+            
+                key = {**field_key,
+                       "seed": seed, 
+                       "readout_idx": readout_idx, 
+                       "roi_id": roi_id,
+                       "session_name": session_name,
+                       }
+                
+                #insert to table 
+                self.dj_table_holder("OnlineMEIs")().insert1(
+                    {
+                        **key,
+                        "mei": mei.detach().cpu().numpy(), # store the array
+                    },
+                )
+
+        ## the model checkpoint
+        # TODO 
+
+    def fetch_from_db(self, field_key: Dict[str, Any] = {}) -> None:
+        """
+        Fetches the MEIs from the database and stores them in self.neuron_seed_mei_dict. 
+        Assumes that this dict is empty before or not set. also stres the roi readout idx mapping in self.roi_ids2readout_idx_wmei.
+        """
+
+        assert len(self.neuron_seed_mei_dict) == 0, "The neuron_seed_mei_dict should be empty before fetching from the database."
+
+        if not hasattr(self, 'roi2readout_idx_wmeis'):
+            self.roi2readout_idx_wmeis = {}
+
+        # fetch all MEIs for the given field_key
+        mei_table = self.dj_table_holder("OnlineMEIs")() & field_key
+        
+        if len(mei_table) == 0:
+            raise ValueError("No MEIs found for the given field_key.")
+        
+        # iterate over the MEIs and store them in the dictionary
+        for row in mei_table.fetch(as_dict=True):
+            readout_idx = row['readout_idx']
+            seed = row['seed']
+            mei = row['mei']
+            roi_id = row['roi_id']
+
+            # add to neuron_seed_mei_dict
+            self.neuron_seed_mei_dict[readout_idx][seed] = mei
+
+            # also store the mapping from roi_id to readout_idx
+            if readout_idx not in self.roi2readout_idx_wmeis:
+                self.roi2readout_idx_wmeis[roi_id] = readout_idx
+
+        ## Model TODO
+        
+
+
+
+
+
+
+
+
                 
 
     def mei_subanalysis(self,
@@ -1083,7 +1234,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                                  \nTestset correlations: {}".format(self.neuron_testset_correls))
             
         # map roi_id to model neuron idx
-        self.roi2readout_idx = {roi_id: idx for idx, roi_id in enumerate(self.rois_after_filtering) if idx in neurons_idxs_to_analyze}
+        self.roi2readout_idx_wmeis = {roi:idx for roi,idx in self.roi_ids2readout_idx.items() if idx in neurons_idxs_to_analyze}
 
 
         if progress_callback is not None:
@@ -1172,7 +1323,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             new_session_id = list(self.session_dict_raw.keys())[0]
             
             # mappings from roi_id to to model_neuron idx
-            self.rois_after_filtering: List[int] = self.neuron_data_dict[new_session_id].session_kwargs["roi_ids"].tolist()
+            self.roi_ids2readout_idx = {roi:idx for idx,roi in enumerate(self.neuron_data_dict[new_session_id].session_kwargs["roi_ids"].tolist())}
 
             # quality filter neurons
             neuron_idx_passed_filtering = self.get_neuron_idxs_passing_criterion()
@@ -1186,11 +1337,6 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         else:
             print("OpenRetinaHoeflingFormat table is already populated for the given field_key. Skipping analysis.")
             
-
-
-
-
-
 
 
 def get_rois_in_field_restriction_str(field_key: Dict[str, Any],roi_id_subset:Optional[List[int]] = None) -> str:

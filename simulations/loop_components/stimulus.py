@@ -80,16 +80,16 @@ def create_rf_test_tensor(heigth: int = 72,
 
 def extract_selected_meis(rois_seed: List[Tuple[int,int]],
                           neuron_seed_mei_dict: Dict[int,Dict[int,torch.Tensor]],
-                          roi_id_to_neuron_id: Dict[int,int]) -> Dict[str,torch.Tensor]:
+                          roi2readout_idx_wmeis: Dict[int,int]) -> Dict[str,torch.Tensor]:
     """
     Given a list of tuplse of roi_ids and random seeds, extracts the selected MEIS, and returns a dict with a unique identifier of roi and seed and the MEI.
       """
     
     selected_meis = {}
     for roi_id, seed in rois_seed:
-        if roi_id not in roi_id_to_neuron_id.keys():
+        if roi_id not in roi2readout_idx_wmeis.keys():
             raise ValueError(f"roi_id {roi_id} not found in neuron_id_to_roi_id mapping.")
-        neuron_id = roi_id_to_neuron_id[roi_id]
+        neuron_id = roi2readout_idx_wmeis[roi_id]
         if neuron_id not in neuron_seed_mei_dict.keys() or seed not in neuron_seed_mei_dict[neuron_id].keys():
             raise ValueError(f"MEI for neuron_id {neuron_id} and seed {seed} not found in neuron_seed_mei_dict.")
         mei = neuron_seed_mei_dict[neuron_id][seed]
@@ -116,7 +116,117 @@ def create_all_mei_tensor(meis: List[torch.Tensor],
         end_t = start_t + t
         full_tensor[:, start_t:end_t, :, :] = mei
     return full_tensor
-    
+
+
+
+
+def generate_presentation_location_order(x_pos: List[float],
+                                         y_pos: List[float],
+                                         ) -> List[int]:
+    """ WRITTEN BY AI
+    Generates an ordering of the presentation locations such that the *total*
+    (and therefore average) distance between consecutive locations is (approximately)
+    maximized.
+
+    Heuristic:
+      1) Start from the farthest pair of points.
+      2) Greedy max-insertion: insert each remaining point at the position that maximizes
+         the *increase* in open-path length (including inserting at either end).
+      3) Apply a 2-opt improvement pass for an open path to further increase length.
+
+    Returns:
+        ordering_idxs: a permutation of range(len(x_pos)).
+    """
+    import math
+    assert len(x_pos) == len(y_pos), "x_pos and y_pos must have the same length"
+    n = len(x_pos)
+    if n <= 2:
+        return list(range(n))
+
+    # --- helpers ---
+    def dist(i: int, j: int) -> float:
+        dx = x_pos[i] - x_pos[j]
+        dy = y_pos[i] - y_pos[j]
+        return math.hypot(dx, dy)
+
+    # total length of an open path
+    def path_len(path: List[int]) -> float:
+        return sum(dist(path[k], path[k+1]) for k in range(len(path)-1))
+
+    # delta if we insert idx at position pos in path (between pos-1 and pos)
+    # pos can be 0..len(path) inclusive; pos==0 or pos==len(path) means "at an end"
+    def insertion_delta(path: List[int], idx: int, pos: int) -> float:
+        if pos == 0:
+            # insert at front: adds edge idx->path[0]
+            return dist(idx, path[0])
+        elif pos == len(path):
+            # insert at end: adds edge path[-1]->idx
+            return dist(path[-1], idx)
+        else:
+            a, b = path[pos-1], path[pos]
+            # old edge a->b is replaced by a->idx and idx->b
+            return dist(a, idx) + dist(idx, b) - dist(a, b)
+
+    # open-path 2-opt: try reversing segments to increase total length
+    def two_opt_open(path: List[int]) -> List[int]:
+        improved = True
+        while improved:
+            improved = False
+            L = len(path)
+            # edges are (i-1,i) and (k, k+1) with 1 <= i < k < L-1
+            for i in range(1, L-1):
+                a, b = path[i-1], path[i]
+                for k in range(i+1, L-0-1):  # k <= L-2
+                    c, d = path[k], path[k+1]
+                    gain = (dist(a, c) + dist(b, d)) - (dist(a, b) + dist(c, d))
+                    if gain > 1e-12:
+                        # Reverse the segment [i, k]
+                        path[i:k+1] = reversed(path[i:k+1])
+                        improved = True
+                        break
+                if improved:
+                    break
+        return path
+
+    # --- 1) seed with farthest pair ---
+    max_d = -1.0
+    seed_i, seed_j = 0, 1
+    for i in range(n):
+        for j in range(i+1, n):
+            d = dist(i, j)
+            if d > max_d:
+                max_d = d
+                seed_i, seed_j = i, j
+    path = [seed_i, seed_j]
+
+    remaining = set(range(n))
+    remaining.discard(seed_i)
+    remaining.discard(seed_j)
+
+    # --- 2) greedy max-insertion ---
+    while remaining:
+        best_idx = None
+        best_pos = None
+        best_delta = -float('inf')
+        for idx in remaining:
+            # try all insertion positions, including ends
+            for pos in range(len(path) + 1):
+                delta = insertion_delta(path, idx, pos)
+                if delta > best_delta:
+                    best_delta = delta
+                    best_idx = idx
+                    best_pos = pos
+        # perform the best insertion
+        path.insert(best_pos, best_idx)
+        remaining.remove(best_idx)
+
+    # --- 3) 2-opt improvement for open path ---
+    path = two_opt_open(path)
+
+    # return permutation of indices
+    ordering_idxs = path
+    return ordering_idxs
+
 
 def save_stimulus_position_data_file(x_pos: List[float], y_pos: List[float], full_file_path: str) -> None:
     """
@@ -384,13 +494,14 @@ def create_rf_avi_from_roi_ids(roi_ids: List[int],
 
 def create_full_avi_from_roi_id_and_seed(rois_seed: List[Tuple[int,int]],
                                          neuron_seed_mei_dict: Dict[int,Dict[int,torch.Tensor]],
-                                         roi_id_to_neuron_id: Dict[int,int],
+                                         roi2readout_idx_wmeis: Dict[int,int],
                                          stimulus_table: Any,
                                         fit_gauss_2d_rf_table: Any,
-                                         trained_model: BaseCoreReadout, # for getting model RFs.
                                          abs_save_dir: str,
-                                         mei_sd_scale_factor: float = 2,
-                                         rf_scale_factor: float = 1.5,
+                                         mei_sd_scale_factor: float = 1.0,
+                                         rf_scale_factor: float = 1.0,
+                                        trained_model: BaseCoreReadout | None = None, # for getting model RFs.
+
                                          ) -> None:
 
     """
@@ -400,7 +511,7 @@ def create_full_avi_from_roi_id_and_seed(rois_seed: List[Tuple[int,int]],
     assert all([roi_id < 130 for roi_id, _ in rois_seed]), "roi_id must be less than 130"
 
     # extract the MEIs for the given roi_ids and seeds
-    selected_meis = extract_selected_meis(rois_seed, neuron_seed_mei_dict,roi_id_to_neuron_id)
+    selected_meis = extract_selected_meis(rois_seed, neuron_seed_mei_dict,roi2readout_idx_wmeis)
 
 
     ## Upsample and put back to space: convert back to original space
@@ -428,7 +539,8 @@ def create_full_avi_from_roi_id_and_seed(rois_seed: List[Tuple[int,int]],
 
     # create a tensor with all MEIs
     all_mei_tensor = create_all_mei_tensor(all_meis_list,
-                                           baseline_pixel_value=NORM_DICT["norm_mean"],)
+                                           baseline_pixel_value=NORM_DICT["norm_mean"],
+                                           inter_stim_frames=40)
 
     # get the RF test stimulus
     rf_test_tensor = create_rf_test_tensor(baseline_pixel_value=NORM_DICT["norm_mean"],
