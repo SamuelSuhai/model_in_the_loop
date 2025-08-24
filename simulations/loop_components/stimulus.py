@@ -117,7 +117,18 @@ def create_all_mei_tensor(meis: List[torch.Tensor],
         full_tensor[:, start_t:end_t, :, :] = mei
     return full_tensor
 
+def generate_mei_ordering(mei_ids: List[str],n_pos) -> List[str]:
+    """Generates n_pos number of lists containing shuffled of mei_ids. """
+    # set random seed
 
+    np.random.seed(42)  # for reproducibility
+    mei_ordering = []
+    for _ in range(n_pos):
+        shuffled_order = np.random.permutation(mei_ids)
+        mei_ordering.append(shuffled_order.tolist())
+
+
+    return mei_ordering
 
 
 def generate_presentation_location_order(x_pos: List[float],
@@ -492,6 +503,11 @@ def create_rf_avi_from_roi_ids(roi_ids: List[int],
 
 
 
+
+
+
+
+
 def create_full_avi_from_roi_id_and_seed(rois_seed: List[Tuple[int,int]],
                                          neuron_seed_mei_dict: Dict[int,Dict[int,torch.Tensor]],
                                          roi2readout_idx_wmeis: Dict[int,int],
@@ -578,3 +594,70 @@ def create_full_avi_from_roi_id_and_seed(rois_seed: List[Tuple[int,int]],
 
     print("DONE!")
 
+def create_mei_avi_for_each_roi(rois_seed: List[Tuple[int,int]],
+                                neuron_seed_mei_dict: Dict[int,Dict[int,torch.Tensor]],
+                                roi2readout_idx_wmeis: Dict[int,int],
+                                stimulus_table: Any,
+                                fit_gauss_2d_rf_table: Any,
+                                abs_save_dir: str,
+                                mei_sd_scale_factor: float = 1.0,
+                                rf_scale_factor: float = 1.0,
+                                trained_model: BaseCoreReadout | None = None, # for getting model RFs.
+
+                                         ) -> None:
+    """
+    """
+    ## position data
+    # get the sta rf peak positions for selected rois
+    rf_peak_x_um, rf_peak_y_um,roi_order = extract_rf_means_from_selected_rois(
+        [roi_id for roi_id, _ in rois_seed],
+        stimulus_table=stimulus_table,
+        gauss_rf_fit_table=fit_gauss_2d_rf_table,
+    )
+    log(f"Order of extracted RF peaks: {roi_order}.")
+
+    # TODO: get model RF peaks
+    rf_peak_x_um_model = []
+    rf_peak_y_um_model = []
+
+    full_rf_peak_x_um = rf_peak_x_um + rf_peak_x_um_model
+    full_rf_peak_y_um = rf_peak_y_um + rf_peak_y_um_model
+    log(f"Full RF peaks:\nx {full_rf_peak_x_um}, \ny{full_rf_peak_y_um}.")
+
+    # generate a ordering maximizing distance between MEIs
+    presentation_ordering = generate_presentation_location_order(full_rf_peak_x_um,
+                                         full_rf_peak_y_um,
+                                         )
+    log(f"Presentation ordering: {presentation_ordering}.")
+
+
+    ## get MEIs
+    # some checks
+    assert all([roi_id < 130 for roi_id, _ in rois_seed]), "roi_id must be less than 130"
+
+    # extract the MEIs for the given roi_ids and seeds
+    selected_meis = extract_selected_meis(rois_seed, neuron_seed_mei_dict,roi2readout_idx_wmeis)
+    
+    ## Upsample and put back to space: convert back to original space
+    all_meis_list = []
+    all_meis_ids = []
+    for key, mei in selected_meis.items():
+
+        # upsample
+        mei = upsample_meis(mei, upsample_factor=4)
+
+        mei = put_mei_back_to_original_space(mei,
+                                             norm_dict=NORM_DICT,
+                                             mei_sd_scale_factor=mei_sd_scale_factor)
+        all_meis_list.append(mei)
+        all_meis_ids.append(key)
+
+    # shuffle meis
+    shuffled_orders = generate_mei_ordering(all_meis_ids, n_pos=len(rois_seed))
+    
+
+
+    # create a tensor with all MEIs
+    all_mei_tensor = create_all_mei_tensor(all_meis_list,
+                                           baseline_pixel_value=NORM_DICT["norm_mean"],
+                                           inter_stim_frames=40)
