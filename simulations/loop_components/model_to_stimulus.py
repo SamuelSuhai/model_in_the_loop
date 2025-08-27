@@ -330,8 +330,15 @@ def train_model_online(cfg: DictConfig,
     trainer: lightning.Trainer = hydra.utils.instantiate(cfg.trainer, logger=logger_array, callbacks=callbacks)
     trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=valid_loader)
 
+    log.info("All dataloaders...")
+    short_cyclers = [(n, ShortCycler(dl)) for n, dl in dataloaders.items()]
+    dataloader_mapping = {f"DataLoader {i}": x[0] for i, x in enumerate(short_cyclers)}
+    log.info(f"Dataloader mapping: {dataloader_mapping}")
+    trainer.test(model, dataloaders=[c for _, c in short_cyclers], ckpt_path="best")
+
+
     ### Testing
-    log.info("Starting testing!")
+    log.info("Testing individual neurons!")
     neuron_testset_correl_dict = get_single_neuron_test_correlations(dataloaders, model)
     assert len(neuron_testset_correl_dict) == 1, "Expected only one session in the test set for online training."
     session_name,neuron_testset_correl = neuron_testset_correl_dict.popitem()  # get first session correlations

@@ -5,7 +5,7 @@ import torch
 import warnings
 warnings.simplefilter("ignore", FutureWarning)
 from time import sleep 
-from typing import List, Dict, Any, Tuple, Callable,Optional
+from typing import List, Dict, Any, Tuple, Callable,Optional,Union
 import numpy as np
 import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
@@ -1343,11 +1343,13 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             
 
 
-def get_rois_in_field_restriction_str(field_key: Dict[str, Any],roi_id_subset:Optional[List[int]] = None) -> str:
+def get_rois_in_field_restriction_str(field_key: Dict[str, Any],roi_id_subset:Optional[List[int]] = None) -> Union[str, Dict]:
     """
     Constructs a restriction string for the given field_key and optional roi_id_subset.
     """
-    
+    if field_key == {}:
+        return {} # no restriction
+
     complete_restriction = " AND ".join([f"{k}='{v}'" for k,v in field_key.items()])
     if roi_id_subset is not None:
         roi_restriction_string = f"roi_id in {str(tuple(roi_id_subset))}" if len(roi_id_subset) >= 2 else f"roi_id={str(roi_id_subset[0])}"

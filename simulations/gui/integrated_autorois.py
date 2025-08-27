@@ -407,13 +407,13 @@ class InteractiveRoiCanvas(RoiCanvasData):
         self.dj_preprocessor = dj_preprocessor
         self.dj_wrappers_dict = {wrapper.name: wrapper for wrapper in all_dj_wrappers}
 
-        if (not isinstance(take_roi_rgba_from_this_analysis, str) and take_roi_rgba_from_this_analysis is not None) or \
-            not take_roi_rgba_from_this_analysis in [wrapper.name for wrapper in all_dj_wrappers]:
-            raise ValueError(f"take_roi_rgba_from_this_analysis must be a string from {list(self.dj_wrappers_dict.keys())} or None,\
+        if take_roi_rgba_from_this_analysis is not None:
+            if not take_roi_rgba_from_this_analysis in [wrapper.name for wrapper in all_dj_wrappers]:
+                raise ValueError(f"take_roi_rgba_from_this_analysis must be a string from {list(self.dj_wrappers_dict.keys())} or None,\
                               got {take_roi_rgba_from_this_analysis}. Use wrapper.name here ")
-        assert hasattr([wrapper for wrapper in all_dj_wrappers if wrapper.name == take_roi_rgba_from_this_analysis][0],"get_roi2rgb_and_alpha_255_map"),\
-            f"Wrapper {take_roi_rgba_from_this_analysis} does not have a method get_roi2rgb_and_alpha_255_map, which is required to take the roi color and alpha from this analysis."
-        self.take_roi_rgba_from_this_analysis = take_roi_rgba_from_this_analysis
+            assert hasattr([wrapper for wrapper in all_dj_wrappers if wrapper.name == take_roi_rgba_from_this_analysis][0],"get_roi2rgb_and_alpha_255_map"),\
+                f"Wrapper {take_roi_rgba_from_this_analysis} does not have a method get_roi2rgb_and_alpha_255_map, which is required to take the roi color and alpha from this analysis."
+            self.take_roi_rgba_from_this_analysis = take_roi_rgba_from_this_analysis
 
 
 
