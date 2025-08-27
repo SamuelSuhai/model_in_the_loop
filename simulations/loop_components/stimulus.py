@@ -3,7 +3,7 @@ from typing import List, Tuple,Dict,Optional, Any
 import numpy as np
 import cv2
 import os
-
+import yaml
 from openretina.models.core_readout import BaseCoreReadout
 from simulations.loop_components.utils import log
 
@@ -89,11 +89,16 @@ def extract_selected_meis(rois_seed: List[Tuple[int,int]],
     for roi_id, seed in rois_seed:
         if roi_id not in roi2readout_idx_wmeis.keys():
             raise ValueError(f"roi_id {roi_id} not found in neuron_id_to_roi_id mapping.")
+        
+        # go from roi_id to neuron_idx in readout layer 
         neuron_id = roi2readout_idx_wmeis[roi_id]
         if neuron_id not in neuron_seed_mei_dict.keys() or seed not in neuron_seed_mei_dict[neuron_id].keys():
             raise ValueError(f"MEI for neuron_id {neuron_id} and seed {seed} not found in neuron_seed_mei_dict.")
         mei = neuron_seed_mei_dict[neuron_id][seed]
         unique_id = f"roi_{roi_id}_seed_{seed}"
+        if unique_id in selected_meis.keys():
+            print(f"Warning: Duplicate entry for {unique_id}. Overwriting previous MEI.")
+            log(f"Warning: Duplicate entry for {unique_id}. Overwriting previous MEI.")
         selected_meis[unique_id] = mei
     
     return selected_meis
@@ -116,19 +121,6 @@ def create_all_mei_tensor(meis: List[torch.Tensor],
         end_t = start_t + t
         full_tensor[:, start_t:end_t, :, :] = mei
     return full_tensor
-
-def generate_mei_ordering(mei_ids: List[str],n_pos) -> List[str]:
-    """Generates n_pos number of lists containing shuffled of mei_ids. """
-    # set random seed
-
-    np.random.seed(42)  # for reproducibility
-    mei_ordering = []
-    for _ in range(n_pos):
-        shuffled_order = np.random.permutation(mei_ids)
-        mei_ordering.append(shuffled_order.tolist())
-
-
-    return mei_ordering
 
 
 def generate_presentation_location_order(x_pos: List[float],
@@ -268,7 +260,7 @@ def save_stimulus_position_data_file(x_pos: List[float], y_pos: List[float], ful
 
 def put_mei_back_to_original_space(mei: torch.Tensor,
                                     norm_dict: Optional[Dict[str,float]] = None,
-                                    mei_sd_scale_factor: float = 2.) -> torch.Tensor:
+                                    mei_sd_scale_factor: float = 1.) -> torch.Tensor:
     """
     Puts the stimulus  back to the original space using the provided statistics.
     If no statistics are provided, it simply maps the tensor to [0, 255].
@@ -354,6 +346,8 @@ def get_roi_query_expression(roi_ids: List[int],) -> str:
         _str = f"roi_id={roi_ids[0]}"
     elif len(roi_ids) > 1:
         _str = f"roi_id in {str(tuple(roi_ids))}"
+    else:
+        raise ValueError("roi_ids list is empty.")
     return _str
 
 def transform_to_qdspy_coord(stimulus_table,all_x_pix: List[float], all_y_pix: List[float]) -> Tuple[List[float],List[float]]:
@@ -399,7 +393,7 @@ def transform_to_qdspy_coord(stimulus_table,all_x_pix: List[float], all_y_pix: L
     all_y_um = []
     for x_pix,y_pix in zip(all_x_pix_list, all_y_pix_list):
 
-        # We need to add half a pixel because QDSpy coordinates are in the center of the pixel
+        # add center in pixels (considering idx 0 base)
         x_pix = x_pix - x_center_pix
         y_pix = y_pix - y_center_pix
 
@@ -424,7 +418,7 @@ def extract_rf_means_from_selected_rois(roi_ids: List[int],
     if len(fit_query) == 0 or len(fit_query) != len(np.unique(roi_ids)):
         raise ValueError(f"Not all roi_ids {roi_ids} are present in the PeakSTAPosition table.")
     else:
-        print(f"Found {len(fit_query)} rois in the PeakSTAPosition table.")
+        print(f"Found {len(fit_query)} rois in the FitGauss2D table.")
 
     srf_pamas,roi_order = fit_query.fetch('srf_params', 'roi_id',)
 
@@ -434,6 +428,9 @@ def extract_rf_means_from_selected_rois(roi_ids: List[int],
 
     # transform to QDSpy coordinates
     all_x_um, all_y_um = transform_to_qdspy_coord(stimulus_table, all_x_pix, all_y_pix)
+
+    # turn roi_order to list of int
+    roi_order = [int(r) for r in roi_order]
 
 
     return all_x_um, all_y_um,roi_order
@@ -502,162 +499,200 @@ def create_rf_avi_from_roi_ids(roi_ids: List[int],
     print("DONE!")
 
 
-
-
-
-
-
-
-def create_full_avi_from_roi_id_and_seed(rois_seed: List[Tuple[int,int]],
-                                         neuron_seed_mei_dict: Dict[int,Dict[int,torch.Tensor]],
-                                         roi2readout_idx_wmeis: Dict[int,int],
-                                         stimulus_table: Any,
-                                        fit_gauss_2d_rf_table: Any,
-                                         abs_save_dir: str,
-                                         mei_sd_scale_factor: float = 1.0,
-                                         rf_scale_factor: float = 1.0,
-                                        trained_model: BaseCoreReadout | None = None, # for getting model RFs.
-
-                                         ) -> None:
-
+def retrieve_meis_and_save_as_avis(rois_seed: List[Tuple[int,int]],
+                                   neuron_seed_mei_dict: Dict[int,Dict[int,torch.Tensor]],
+                                   roi2readout_idx_wmeis: Dict[int,int],
+                                   stimulus_directory: str,
+                                   mei_sd_scale_factor: float = 1.0,
+                                   n_bsl_fames_before_mei: int = 40,
+                                   ) -> List[str]:
     """
-    Acts as a wrapper."""
+    1. extracts the MEIs for the given roi_ids and seeds from the dict structure they were stored in the wrapper
+    2. Upsamples and puts them back to original pixel space
+    3. creates an avi file for each MEI and stores it in the given directory
+    4. returns a list of the unique identifiers of the created MEI avi files."""
 
-    # some checks
-    assert all([roi_id < 130 for roi_id, _ in rois_seed]), "roi_id must be less than 130"
-
-    # extract the MEIs for the given roi_ids and seeds
+    # extract the MEIs for the given roi_ids and seeds from the dict structure they were stored in the wrapper
     selected_meis = extract_selected_meis(rois_seed, neuron_seed_mei_dict,roi2readout_idx_wmeis)
 
 
-    ## Upsample and put back to space: convert back to original space
-    all_meis_list = []
-    all_meis_ids = []
+    ## Upsample and put back to space.
     for key, mei in selected_meis.items():
 
         # upsample
         mei = upsample_meis(mei, upsample_factor=4)
 
-        mei = put_mei_back_to_original_space(mei,
+        # convert to orginal pixel space
+        mei = put_mei_back_to_original_space(mei, # type: ignore
                                              norm_dict=NORM_DICT,
                                              mei_sd_scale_factor=mei_sd_scale_factor)
-        all_meis_list.append(mei)
-        all_meis_ids.append(key)
-
-    # swap two successive MEIs to avoid adptation.
-    np.random.seed(42)  # for reproducibility
-    suffled_order = np.random.permutation(list(range(len(all_meis_list))))
-    all_meis_list = [all_meis_list[i] for i in suffled_order]
-    all_meis_ids = [all_meis_ids[i] for i in suffled_order]
-    log(f"MEIs ids shuffled order: {all_meis_ids}.")
-    print(f"MEIs shuffled. new index order:  {suffled_order}.")
-
-
-    # create a tensor with all MEIs
-    all_mei_tensor = create_all_mei_tensor(all_meis_list,
-                                           baseline_pixel_value=NORM_DICT["norm_mean"],
-                                           inter_stim_frames=40)
-
-    # get the RF test stimulus
-    rf_test_tensor = create_rf_test_tensor(baseline_pixel_value=NORM_DICT["norm_mean"],
-                                           abs_pixel_increase_from_bsl= rf_scale_factor * NORM_DICT["norm_std"],)
+                
+        # add the baseline frames before the mei
+        assert mei.ndim == 4
+        bsl_tensor = NORM_DICT["norm_mean"] * torch.ones((2, n_bsl_fames_before_mei, mei.shape[2], mei.shape[3]), dtype=torch.float32,device=mei.device)
+        full_mei_stim = torch.cat((bsl_tensor, mei), dim=1)
     
-    # concatenate the RF test stimulus with the MEIs
-    full_stimulus = torch.cat((rf_test_tensor, all_mei_tensor), dim=1)
+        # create avi from stim tensor
+        avi_filename = f"mei_{key}.avi"
+        avi_full_path = os.path.join(stimulus_directory, avi_filename)
+        print(f"Creating MEI avi file for {key} at {avi_full_path}.")
+        create_avi_from_tensor(full_mei_stim, avi_full_path)
 
-    # get the sta rf peak positions for selected rois
-    rf_peak_x_um, rf_peak_y_um,roi_order = extract_rf_means_from_selected_rois(
+    return list(selected_meis.keys())
+
+def generate_mei_ordering(mei_ids: List[str],n_pos,) -> List[List[str]]:
+    """ 
+    It generates len(mei_ids) number of lists containing shuffled of mei_ids. These sublists are of shape len(n_pos). 
+    This is done such that: imagine the individual lists were columns of a matrix, 
+    then it is not the case that in any row you have two identical mei_ids in neighboring columns or in the first or last column. 
+    So basically for evey index in the list of sublists the mei_id is different from the one in the same index in the previous and next sublist.
+    It returns a list of rows of this matrix, where basically each sublist containst the meis to play across the positions so that we only need a 
+    list of positions and know what mei to play where for a given trial.
+    """
+
+    presentation_matrix = np.empty((len(mei_ids),n_pos), dtype=object)
+
+    # get a base permutation
+    np.random.seed(42)  # for reproducibility
+    base_permutation = np.random.permutation(mei_ids).tolist()
+
+    for col_idx in range(n_pos): 
+        if col_idx == 0:
+            permutation = base_permutation
+        else:
+            # shift permuation by one
+            permutation = permutation[1:] + [permutation[0]]
+
+        presentation_matrix[:,col_idx] = permutation
+
+    mei_presentation_ordering = [presentation_matrix[trial].tolist() for trial in range(len(mei_ids))]
+
+    return mei_presentation_ordering
+
+    
+def create_metadata_file(reordered_rf_peak_x_um: List[float],reordered_rf_peak_y_um: List[float],reordered_roi_ids: List[int],mei_presentation_ordering: List[List[str]],full_file_path: str) -> None:
+    """
+    Stored metadata in a dict and saves it as a yaml file.
+    """
+    
+    # some checks
+    assert len(mei_presentation_ordering[0]) == len(reordered_roi_ids) == len(reordered_rf_peak_x_um) == len(reordered_rf_peak_y_um), "Length of mei_presentation_ordering sublists, reordered_roi_ids, reordered_rf_peak_x_um and reordered_rf_peak_y_um must be the same"
+    
+    # save positions, roi_ids, mei_ids to be presented
+    metadata = {"positions": [],
+                "roi_ids": [],
+                "mei_ids": mei_presentation_ordering,} 
+    
+
+    for x, y, roi_id in zip(reordered_rf_peak_x_um, reordered_rf_peak_y_um, reordered_roi_ids, strict=True):
+        metadata["positions"].append([x, y])
+        metadata["roi_ids"].append(roi_id)
+    
+    # save metadata as yaml
+    with open(full_file_path, 'w') as file:
+        yaml.dump(metadata, file)
+
+def get_next_iteration_dir_from_remote(stimulus_output_dir: str,iteration_dir_name_base = "iter") -> Tuple[int,str]:
+    """
+    Given directory looks in dir to see other dirs containing iteration_dir_name_base 
+    and returns the next iteration number, which is last in the folder name.
+    
+    Args:
+        stimulus_output_dir: The directory to search in
+        iteration_dir_name_base: The base name to look for in subdirectory names
+        
+    Returns:
+        The next iteration number (max existing + 1, or 0 if none found)
+    """    
+
+    # Get all subdirectories in the stimulus_output_dir
+    all_subdirs = [d for d in os.listdir(stimulus_output_dir) 
+                  if os.path.isdir(os.path.join(stimulus_output_dir, d))]
+    
+    # Find subdirectories that match the pattern: base_name followed by a number
+    iteration_numbers = []
+    
+    for subdir in all_subdirs:
+        if iteration_dir_name_base in subdir:
+            possible_nr = subdir[-1]
+            try:
+                iteration_number = int(possible_nr)
+                iteration_numbers.append(iteration_number)
+            except ValueError:
+                continue       
+    
+    # If no matching directories found, return 0 as the first iteration
+    if not iteration_numbers:
+        next_iteation = 0
+    else:
+        # Return the next iteration number
+        next_iteation = max(iteration_numbers) + 1
+    next_dir = os.path.join(stimulus_output_dir, f"{iteration_dir_name_base}{next_iteation}")
+    return next_iteation,next_dir
+
+
+def create_single_mei_avis_and_metadata(
+    rois_seed: List[Tuple[int,int]],
+    neuron_seed_mei_dict: Dict[int,Dict[int,torch.Tensor]],
+    roi2readout_idx_wmeis: Dict[int,int],
+    stimulus_table: Any,
+    fit_gauss_2d_rf_table: Any,
+    abs_save_dir: str,
+    mei_sd_scale_factor: float = 1.0,
+):
+
+
+    ## get the positions and their ordering
+    rf_peak_x_um, rf_peak_y_um, initial_roi_id_order = extract_rf_means_from_selected_rois(
         [roi_id for roi_id, _ in rois_seed],
         stimulus_table=stimulus_table,
         gauss_rf_fit_table=fit_gauss_2d_rf_table,
     )
-    log(f"Order of extracted RF peaks: {roi_order}.")
-
-    # TODO: get model RF peaks
-    rf_peak_x_um_model = []
-    rf_peak_y_um_model = []
-
-    full_rf_peak_x_um = rf_peak_x_um + rf_peak_x_um_model
-    full_rf_peak_y_um = rf_peak_y_um + rf_peak_y_um_model
-
-    # create metadata file
-    mei_metadata_filename = os.path.join(abs_save_dir,"mei_test_stimulus_metadata.txt")
-    print("Saving RF test stimulus metadata to ", mei_metadata_filename)
-    save_stimulus_position_data_file(full_rf_peak_x_um, full_rf_peak_y_um, mei_metadata_filename)
-  
-
-    # create the avi file
-    mei_avi_filename = os.path.join(abs_save_dir,"mei_test_stimulus.avi")
-    print("Creating MEI test stimulus avi file at ", mei_avi_filename)
-    create_avi_from_tensor(full_stimulus, mei_avi_filename)
-    log(f"Created avi file from termsor of shape {full_stimulus.shape} at {mei_avi_filename}.")
-
-    print("DONE!")
-
-def create_mei_avi_for_each_roi(rois_seed: List[Tuple[int,int]],
-                                neuron_seed_mei_dict: Dict[int,Dict[int,torch.Tensor]],
-                                roi2readout_idx_wmeis: Dict[int,int],
-                                stimulus_table: Any,
-                                fit_gauss_2d_rf_table: Any,
-                                abs_save_dir: str,
-                                mei_sd_scale_factor: float = 1.0,
-                                rf_scale_factor: float = 1.0,
-                                trained_model: BaseCoreReadout | None = None, # for getting model RFs.
-
-                                         ) -> None:
-    """
-    """
-    ## position data
-    # get the sta rf peak positions for selected rois
-    rf_peak_x_um, rf_peak_y_um,roi_order = extract_rf_means_from_selected_rois(
-        [roi_id for roi_id, _ in rois_seed],
-        stimulus_table=stimulus_table,
-        gauss_rf_fit_table=fit_gauss_2d_rf_table,
-    )
-    log(f"Order of extracted RF peaks: {roi_order}.")
-
-    # TODO: get model RF peaks
-    rf_peak_x_um_model = []
-    rf_peak_y_um_model = []
-
-    full_rf_peak_x_um = rf_peak_x_um + rf_peak_x_um_model
-    full_rf_peak_y_um = rf_peak_y_um + rf_peak_y_um_model
-    log(f"Full RF peaks:\nx {full_rf_peak_x_um}, \ny{full_rf_peak_y_um}.")
+    log(f"Extracted the followin peak values for ROIs {initial_roi_id_order}:\nx {rf_peak_x_um}, \ny{rf_peak_y_um}.")
+    print(f"Initial roi_id order: {initial_roi_id_order}.")
 
     # generate a ordering maximizing distance between MEIs
-    presentation_ordering = generate_presentation_location_order(full_rf_peak_x_um,
-                                         full_rf_peak_y_um,
+    presentation_ordering_idx = generate_presentation_location_order(rf_peak_x_um,
+                                         rf_peak_y_um,
                                          )
-    log(f"Presentation ordering: {presentation_ordering}.")
+    reordered_roi_ids = [initial_roi_id_order[i] for i in presentation_ordering_idx]
+    reordered_rf_peak_x_um = [rf_peak_x_um[i] for i in presentation_ordering_idx]
+    reordered_rf_peak_y_um = [rf_peak_y_um[i] for i in presentation_ordering_idx]
 
+    log(f"Presentation ordering indices: {presentation_ordering_idx}\n corresponds to roi_id ordering of {reordered_roi_ids}.")
+    print(f"Reordered roi_id order: {reordered_roi_ids}.")
 
-    ## get MEIs
-    # some checks
-    assert all([roi_id < 130 for roi_id, _ in rois_seed]), "roi_id must be less than 130"
+    ## get the meis and their ordering
+    # new file for iteration 
+    iter_nr, abs_iteration_dir = get_next_iteration_dir_from_remote(
+        stimulus_output_dir=abs_save_dir)
+    os.makedirs(abs_iteration_dir, exist_ok=True)
 
-    # extract the MEIs for the given roi_ids and seeds
-    selected_meis = extract_selected_meis(rois_seed, neuron_seed_mei_dict,roi2readout_idx_wmeis)
-    
-    ## Upsample and put back to space: convert back to original space
-    all_meis_list = []
-    all_meis_ids = []
-    for key, mei in selected_meis.items():
+    # retrieve meis and save as avis
+    retrieved_mei_ids = retrieve_meis_and_save_as_avis(
+        rois_seed=rois_seed,
+        neuron_seed_mei_dict=neuron_seed_mei_dict,
+        roi2readout_idx_wmeis=roi2readout_idx_wmeis,
+        stimulus_directory=abs_iteration_dir,
+        mei_sd_scale_factor=mei_sd_scale_factor,
+        n_bsl_fames_before_mei=40,
+    )
+    log(f"Retrieved and saved MEIs with the following unique ids: {retrieved_mei_ids}.")
+    print(f"Retrieved and saved MEIs with the following unique ids: {retrieved_mei_ids}.")
+    # generate the presentation ordering of the retrieved meis.
+    # List of sublists each idx per sublist is a mei id to be presented at a presentation location
+    mei_presentation_ordering: List[List[str]] = generate_mei_ordering(retrieved_mei_ids,n_pos=len(reordered_roi_ids))
+    log(f"Generated MEI presentation ordering: {mei_presentation_ordering}.")   
+    print(f"Generated MEI presentation ordering: {mei_presentation_ordering}.") 
 
-        # upsample
-        mei = upsample_meis(mei, upsample_factor=4)
+    ## save the metadata
+    metadata_filename = os.path.join(abs_iteration_dir,"mei_metadata.yaml")
+    create_metadata_file(reordered_rf_peak_x_um,
+                         reordered_rf_peak_y_um,
+                         reordered_roi_ids,
+                         mei_presentation_ordering,
+                         metadata_filename)
+    log(f"Saved metadata file at {metadata_filename}.")
+    print(f"Saved metadata file at {metadata_filename}.")
+    print("DONE!")
 
-        mei = put_mei_back_to_original_space(mei,
-                                             norm_dict=NORM_DICT,
-                                             mei_sd_scale_factor=mei_sd_scale_factor)
-        all_meis_list.append(mei)
-        all_meis_ids.append(key)
-
-    # shuffle meis
-    shuffled_orders = generate_mei_ordering(all_meis_ids, n_pos=len(rois_seed))
-    
-
-
-    # create a tensor with all MEIs
-    all_mei_tensor = create_all_mei_tensor(all_meis_list,
-                                           baseline_pixel_value=NORM_DICT["norm_mean"],
-                                           inter_stim_frames=40)

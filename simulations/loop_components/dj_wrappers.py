@@ -347,6 +347,11 @@ class DJTableHolder:
         elif target == "rois":
             (self('RoiMask')() & field_key).delete(safemode=safemode)
 
+        elif target == "model":
+            (self("CascadeTraces")() & field_key).delete(safemode=safemode)
+            (self("OpenRetinaHoeflingFormat")() & field_key).delete(safemode=safemode)
+            return # no roi masks to delete here
+         
         # remove any roi masks saved in the directory
         all_field_presentation_files = (self("Presentation")() & field_key).fetch("pres_data_file")
         all_roi_mask_files = [to_roi_mask_file(file, roi_mask_dir="ROIs") for file in all_field_presentation_files]
@@ -950,13 +955,18 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
     def __init__(self,dj_table_holder,
                  model_configs,
+                 mei_optimization_params,
                  seeds: List[int],
+                 reconstruct_mei: bool = True,
                 ) -> None:
         
         self.dj_table_holder = dj_table_holder
 
       
         self.model_configs = model_configs
+        self.mei_optimization_params = mei_optimization_params
+
+        self.reconstruct_mei = reconstruct_mei
 
         # to store the data: the key is the index in the readout and not the roi_id
         self.neuron_seed_mei_dict = {}
@@ -970,8 +980,6 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         self.colors = plt.cm.nipy_spectral(np.linspace(0, 1,len(self.seeds)))
 
         self.testset_correl_min = 0.4
-
-        self.reconstruct_mei = True
 
 
     def plot_seed_respones(self,neuron_id: int,ax: plt.Axes, optimization_window= (10,20),response_window = (21,50)):
@@ -1090,26 +1098,6 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         
         return passing_neuron_idxs
     
-    def reconstruct_all_mei_from_decomposition(self,
-                                           ) -> None:
-        """
-        Reconstructs the MEI from the decomposition for a given neuron and seed.
-        """
-        neuron_seed_mei_reconstructed = {}
-        for neuron_id, seed_dict in self.neuron_seed_decomposed_meis.items():
-            neuron_seed_mei_reconstructed[neuron_id] = {}
-            for seed, decomposition in seed_dict.items():
-                # reconstruct the MEI from the decomposition
-                temporal_kernels = decomposition['temporal_kernels']
-                spatial_kernels = decomposition['spatial_kernels']
-
-                reconstruction = reconstruct_mei_from_decomposed(
-                    temporal_kernels=temporal_kernels,
-                    spatial_kernels=spatial_kernels,)
-                neuron_seed_mei_reconstructed[neuron_id][seed] = reconstruction
-
-        self.neuron_seed_mei_dict = neuron_seed_mei_reconstructed
-    
 
     def get_roi2rgb_and_alpha_255_map(self,
                                       field_key: Dict[str, Any],
@@ -1159,6 +1147,9 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                 
                 # get the corresponding roi_id
                 roi_id = readout_idx_wmei2rois[readout_idx]
+
+                # get the response of the model 
+                response = self.neuron_seed_mei_responses[readout_idx][seed]
             
                 key = {**field_key,
                        "seed": seed, 
@@ -1172,11 +1163,19 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                     {
                         **key,
                         "mei": mei.detach().cpu().numpy(), # store the array
+                        "model_response": response.detach().cpu().numpy(),
                     },
                 )
 
-        ## the model checkpoint
-        # TODO 
+                ## the model checkpoint
+                self.dj_table_holder("OnlineTrainedModel")().insert1(
+                    {
+                        **field_key,
+                        "session_name": session_name,
+                        "model_chkpt_path": self.best_model_ckp
+
+                    }
+                )        
 
     def fetch_from_db(self, field_key: Dict[str, Any] = {}) -> None:
         """
@@ -1214,13 +1213,6 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
 
 
-
-
-
-
-
-                
-
     def mei_subanalysis(self,
                         new_session_id: str,
                         neurons_idxs_to_analyze: List[int],
@@ -1251,6 +1243,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                                         model = self.model,
                                         new_session_id = new_session_id,
                                         random_seeds =self.seeds,
+                                        mei_optimization_params= self.mei_optimization_params,
                                         neuron_ids_to_analyze = neurons_idxs_to_analyze, # NOTE: this will optimize each id individually 
                                         set_model_to_eval_mode = False, # model in training mode for noisy MEIs
                                     )
@@ -1260,7 +1253,6 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         ## generate responses for the MEIs and decompose them
         self.neuron_seed_mei_responses = {neuron_id: {} for neuron_id in self.neuron_seed_mei_dict.keys()}
         self.neuron_seed_decomposed_meis = {neuron_id: {} for neuron_id in self.neuron_seed_mei_dict.keys()}
-        self.neuron_seed_mei_reconstructed = {neuron_id: {} for neuron_id in self.neuron_seed_mei_dict.keys()}
         for neuron_id,seed_dict in self.neuron_seed_mei_dict.items():
             for seed,mei in seed_dict.items():
 
@@ -1275,19 +1267,47 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                     reconstruction = reconstruct_mei_from_decomposed(
                                 temporal_kernels=temporal_kernels,
                                 spatial_kernels=spatial_kernels,)
-                    mei_for_response = torch.tensor(reconstruction,dtype=torch.float32).to(self.model.device)
-                else:
-                    mei_for_response = mei 
+                    reconstruction = torch.tensor(reconstruction,dtype=torch.float32).to(self.model.device)
+                    assert reconstruction.shape == mei.shape, "Reconstructed MEI shape does not match original MEI shape."
+                    
+                    # overwrite the mei with the reconstruction
+                    mei = reconstruction
+                    self.neuron_seed_mei_dict[neuron_id][seed] = mei
+
 
                 # responses 
                 response = get_model_mei_response(model = self.model,
-                                                    mei=mei_for_response,
+                                                    mei=mei,
                                                     session_id = new_session_id,
                                                     neuron_id = neuron_id,)
                 self.neuron_seed_mei_responses[neuron_id][seed] = response
 
         if progress_callback is not None:
             progress_callback(100)
+
+
+    def extract_and_train(self) -> None:
+        ## model training 
+        self.session_dict_raw = self.dj_table_holder('OpenRetinaHoeflingFormat')().extract_data()
+        
+        # preprocess and filter further 
+        self.movies_dict = load_stimuli(self.model_configs)
+
+        self.neuron_data_dict = preprocess_for_openretina(self.session_dict_raw,self.model_configs)
+
+        # load and refine model
+        self.model,self.neuron_testset_correls,self.best_model_ckp = train_model_online(self.model_configs,
+                                                                    self.neuron_data_dict,
+                                                                    self.movies_dict)
+
+
+        # store eome data
+        self.new_session_id = list(self.session_dict_raw.keys())[0]
+        
+        # mappings from roi_id to to model_neuron idx
+        self.roi_ids2readout_idx = {roi:idx for idx,roi in enumerate(self.neuron_data_dict[self.new_session_id].session_kwargs["roi_ids"].tolist())}
+
+
 
     def compute_analysis(self, field_key = {},
                          roi_id_subset: Optional[List[int]] = None,
@@ -1305,33 +1325,17 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             if progress_callback is not None:
                 progress_callback(30)
             
-            ## model training 
-            self.session_dict_raw = self.dj_table_holder('OpenRetinaHoeflingFormat')().extract_data()
+            ## fetch data and train model
+            self.extract_and_train()
             
-            # preprocess and filter further 
-            self.movies_dict = load_stimuli(self.model_configs)
-
-            self.neuron_data_dict = preprocess_for_openretina(self.session_dict_raw,self.model_configs)
-
-            # load and refine model
-            self.model,self.neuron_testset_correls = train_model_online(self.model_configs,
-                                                                        self.neuron_data_dict,
-                                                                        self.movies_dict)
-
-
-            ## MEI generation
-            new_session_id = list(self.session_dict_raw.keys())[0]
-            
-            # mappings from roi_id to to model_neuron idx
-            self.roi_ids2readout_idx = {roi:idx for idx,roi in enumerate(self.neuron_data_dict[new_session_id].session_kwargs["roi_ids"].tolist())}
-
             # quality filter neurons
-            neuron_idx_passed_filtering = self.get_neuron_idxs_passing_criterion()
+            self.neuron_idx_passed_filtering = self.get_neuron_idxs_passing_criterion()
             
+            ## MEI generation
 
             self.mei_subanalysis(
-                        new_session_id= new_session_id,
-                        neurons_idxs_to_analyze = neuron_idx_passed_filtering,
+                        new_session_id= self.new_session_id,
+                        neurons_idxs_to_analyze = self.neuron_idx_passed_filtering,
                         progress_callback =progress_callback
                         )
         else:

@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - openretina@model_configs: hoefling_2024_core_readout_low_res
-
+  - openretina/mei_optimization_params: mei_optimization_params
 
 data_subfolders:
   day: 20250717

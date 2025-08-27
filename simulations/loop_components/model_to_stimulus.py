@@ -41,6 +41,7 @@ from openretina.insilico.stimulus_optimization.optimization_stopper import Optim
 from openretina.insilico.stimulus_optimization.optimizer import optimize_stimulus
 from openretina.insilico.stimulus_optimization.regularizer import (
     ChangeNormJointlyClipRangeSeparately,
+    TemporalGaussianLowPassFilterProcessor,
 )
 from openretina.models.core_readout import load_core_readout_model
 
@@ -56,7 +57,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 STIMULUS_SHAPE = (1, 2, 50, 18, 16)
 
 STIMULUS_RANGE_CONSTRAINTS = {
-    "norm": 5.0,
+    "norm": 30.0,
     "x_min_green": -0.654,
     "x_max_green": 6.269,
     "x_min_uv": -0.913,
@@ -76,7 +77,10 @@ def load_pretrained_model(checkpoint_path: str) -> BaseCoreReadout:
 def generate_optimization_components(stimulus_range_constraints: Dict[str, float] = STIMULUS_RANGE_CONSTRAINTS,
                                      reducer_axis: int= 0,
                                      reducer_start: int = 10,
-                                     reducer_length: int = 10):
+                                     reducer_length: int = 10) -> Tuple[List[Any], ResponseReducer]:
+    
+    
+    stimulus_lowpass_filter = TemporalGaussianLowPassFilterProcessor(sigma=0.5, kernel_size=5, device=DEVICE)
     stimulus_postprocessor = ChangeNormJointlyClipRangeSeparately(
     min_max_values=[
         (stimulus_range_constraints["x_min_green"], stimulus_range_constraints["x_max_green"]),
@@ -87,7 +91,7 @@ def generate_optimization_components(stimulus_range_constraints: Dict[str, float
 
     response_reducer = SliceMeanReducer(axis=reducer_axis, start=reducer_start, length=reducer_length)
 
-    return stimulus_postprocessor, response_reducer
+    return [stimulus_postprocessor,stimulus_lowpass_filter], response_reducer
 
 
 def get_model_gaussian_scaled_means(model: BaseCoreReadout, session: str) -> torch.Tensor:
@@ -98,11 +102,12 @@ def get_model_gaussian_scaled_means(model: BaseCoreReadout, session: str) -> tor
 #@time_it
 def generate_mei(model: BaseCoreReadout,
                       new_session_id:str,
-                      stimulus_postprocessor,
+                      stimulus_postprocessor_list: List[Any],
                       response_reducer,
                       stimulus_shape: tuple = STIMULUS_SHAPE,
                       neuron_id: List[int] | int = 0, 
                       max_iterations: int = 10,
+                      lr =10.0,
                       ) -> torch.Tensor:
 
     # check if model params are on same device as stimulus
@@ -117,14 +122,14 @@ def generate_mei(model: BaseCoreReadout,
         model, neuron_indices=neuron_id, data_key=new_session_id, response_reducer=response_reducer
     )
     optimization_stopper = OptimizationStopper(max_iterations=max_iterations)
-    optimizer_init_fn = partial(torch.optim.SGD, lr=10.0)
+    optimizer_init_fn = partial(torch.optim.SGD, lr=lr)
 
     optimize_stimulus(
     stimulus,
     optimizer_init_fn,
     objective,
     optimization_stopper,
-    stimulus_postprocessor=stimulus_postprocessor,
+    stimulus_postprocessor=stimulus_postprocessor_list,
     stimulus_regularization_loss=None,
     )
 
@@ -204,12 +209,14 @@ def get_model_mei_response(model: BaseCoreReadout, mei: torch.Tensor, session_id
 def generate_meis_with_n_random_seeds(
     model: BaseCoreReadout,
     new_session_id: str,
+    mei_optimization_params: Dict[str, Any], 
     random_seeds: List = [42],
-    neuron_ids_to_analyze: List[int] = [0], # NOTE: this will optimize each id individually 
+    neuron_ids_to_analyze: List[int] = [0], # NOTE: this will optimize each id individually
     set_model_to_eval_mode: bool = False,
 ) -> Dict[int, Dict[int, torch.Tensor]]:
     """Generates a dictionary of MEIs for each neuron id and each random seed."""
     
+
     if set_model_to_eval_mode:
         model.eval()
     else:
@@ -217,11 +224,11 @@ def generate_meis_with_n_random_seeds(
             model.train()
 
     # generate optimization components
-    stimulus_postprocessor, response_reducer = generate_optimization_components(
+    stimulus_postprocessor_list, response_reducer = generate_optimization_components(
         stimulus_range_constraints=STIMULUS_RANGE_CONSTRAINTS,
         reducer_axis=0,
-        reducer_start=10,
-        reducer_length=10,
+        reducer_start=mei_optimization_params["reducer_start"],
+        reducer_length=mei_optimization_params["reducer_length"],
     )
     
     all_meis = {neuron_id: {} for neuron_id in neuron_ids_to_analyze}
@@ -234,10 +241,12 @@ def generate_meis_with_n_random_seeds(
             # set the seed 
             single_neuron_seed_mei = generate_mei(model=model,
                         new_session_id = new_session_id,
-                        stimulus_postprocessor = stimulus_postprocessor,
+                        stimulus_postprocessor_list = stimulus_postprocessor_list,
                         response_reducer = response_reducer,
                         stimulus_shape= STIMULUS_SHAPE,
-                        neuron_id = neuron_id)
+                        neuron_id = neuron_id,
+                        max_iterations=mei_optimization_params["max_iteration"],
+                        lr=mei_optimization_params["lr"],)
                         
             all_meis[neuron_id][seed] = single_neuron_seed_mei
     return all_meis
@@ -247,7 +256,7 @@ def generate_meis_with_n_random_seeds(
 #@time_it
 def train_model_online(cfg: DictConfig,
                        neuron_data_dict:Dict[str,ResponsesTrainTestSplit],
-                       movies_dict:Dict[str,MoviesTrainTestSplit] | MoviesTrainTestSplit) -> Tuple[BaseCoreReadout,Dict[int, float]]:
+                       movies_dict:Dict[str,MoviesTrainTestSplit] | MoviesTrainTestSplit) -> Tuple[BaseCoreReadout,Dict[int, float], str]:
     
     log.info("Logging full config:")
     log.info(OmegaConf.to_yaml(cfg))
@@ -327,8 +336,14 @@ def train_model_online(cfg: DictConfig,
     assert len(neuron_testset_correl_dict) == 1, "Expected only one session in the test set for online training."
     session_name,neuron_testset_correl = neuron_testset_correl_dict.popitem()  # get first session correlations
     log.info(f"Test set neuron correlations statistics (mean,std,min,max) for session {session_name}: {[func(list(neuron_testset_correl.values())) for func in [np.mean, np.std, np.min, np.max]]}")
+    
+    # Get the checkpoint callback from your callbacks list
+    checkpoint_callback = next(c for c in callbacks if isinstance(c, lightning.pytorch.callbacks.ModelCheckpoint))
 
-    return model,neuron_testset_correl
+    # After training completes:
+    best_model_path = checkpoint_callback.best_model_path
+
+    return model,neuron_testset_correl, best_model_path
 
 
 

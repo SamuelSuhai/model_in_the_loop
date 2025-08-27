@@ -1,0 +1,104 @@
+Log started on 2025-08-26
+2025-08-26 11:22:16 - Extracted the followin peak values for ROIs [24, 36, 45, 60]:
+x [31, 51, 70, -28], 
+y[44, -4, -22, 75].
+2025-08-26 11:22:16 - Presentation ordering indices: [0, 2, 3, 1]
+ corresponds to roi_id ordering of [24, 45, 60, 36].
+2025-08-26 11:22:16 - Retrieved and saved MEIs with the following unique ids: ['roi_24_seed_111', 'roi_36_seed_222', 'roi_45_seed_111', 'roi_60_seed_222'].
+2025-08-26 11:22:16 - Generated MEI presentation ordering: [['roi_36_seed_222', 'roi_60_seed_222', 'roi_24_seed_111', 'roi_45_seed_111'], ['roi_60_seed_222', 'roi_24_seed_111', 'roi_45_seed_111', 'roi_36_seed_222'], ['roi_24_seed_111', 'roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_222'], ['roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_222', 'roi_24_seed_111']].
+2025-08-26 11:23:17 - Extracted the followin peak values for ROIs [24, 36, 45, 60]:
+x [31, 51, 70, -28], 
+y[44, -4, -22, 75].
+2025-08-26 11:23:17 - Presentation ordering indices: [0, 2, 3, 1]
+ corresponds to roi_id ordering of [24, 45, 60, 36].
+2025-08-26 11:23:18 - Retrieved and saved MEIs with the following unique ids: ['roi_24_seed_111', 'roi_36_seed_222', 'roi_45_seed_111', 'roi_60_seed_222'].
+2025-08-26 11:23:18 - Generated MEI presentation ordering: [['roi_36_seed_222', 'roi_60_seed_222', 'roi_24_seed_111', 'roi_45_seed_111'], ['roi_60_seed_222', 'roi_24_seed_111', 'roi_45_seed_111', 'roi_36_seed_222'], ['roi_24_seed_111', 'roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_222'], ['roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_222', 'roi_24_seed_111']].
+2025-08-26 11:23:18 - Saved metadata file at /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop/iter2/mei_metadata.yaml.
+2025-08-26 11:42:34 - Extracted the followin peak values for ROIs [24, 36, 45, 60]:
+x [31, 51, 70, -28], 
+y[44, -4, -22, 75].
+2025-08-26 11:42:34 - Presentation ordering indices: [0, 2, 3, 1]
+ corresponds to roi_id ordering of [24, 45, 60, 36].
+2025-08-26 11:42:34 - Retrieved and saved MEIs with the following unique ids: ['roi_24_seed_111', 'roi_36_seed_222', 'roi_45_seed_111', 'roi_60_seed_222'].
+2025-08-26 11:42:34 - Generated MEI presentation ordering: [['roi_36_seed_222', 'roi_60_seed_222', 'roi_24_seed_111', 'roi_45_seed_111'], ['roi_60_seed_222', 'roi_24_seed_111', 'roi_45_seed_111', 'roi_36_seed_222'], ['roi_24_seed_111', 'roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_222'], ['roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_222', 'roi_24_seed_111']].
+2025-08-26 11:42:34 - Saved metadata file at /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop/iter3/mei_metadata.yaml.
+2025-08-26 11:42:48 - Extracted the followin peak values for ROIs [24, 36, 45, 60]:
+x [31, 51, 70, -28], 
+y[44, -4, -22, 75].
+2025-08-26 11:43:24 - Presentation ordering indices: [0, 2, 3, 1]
+ corresponds to roi_id ordering of [24, 45, 60, 36].
+2025-08-26 11:43:37 - Retrieved and saved MEIs with the following unique ids: ['roi_24_seed_111', 'roi_36_seed_222', 'roi_45_seed_111', 'roi_60_seed_222'].
+2025-08-26 11:43:37 - Generated MEI presentation ordering: [['roi_36_seed_222', 'roi_60_seed_222', 'roi_24_seed_111', 'roi_45_seed_111'], ['roi_60_seed_222', 'roi_24_seed_111', 'roi_45_seed_111', 'roi_36_seed_222'], ['roi_24_seed_111', 'roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_222'], ['roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_222', 'roi_24_seed_111']].
+2025-08-26 11:43:37 - Saved metadata file at /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop/iter4/mei_metadata.yaml.
+2025-08-26 11:43:44 - Extracted the followin peak values for ROIs [24, 36, 45, 60]:
+x [31, 51, 70, -28], 
+y[44, -4, -22, 75].
+2025-08-26 11:43:46 - Presentation ordering indices: [0, 2, 3, 1]
+ corresponds to roi_id ordering of [24, 45, 60, 36].
+2025-08-26 11:45:31 - Retrieved and saved MEIs with the following unique ids: ['roi_24_seed_111', 'roi_36_seed_222', 'roi_45_seed_111', 'roi_60_seed_222'].
+2025-08-26 11:45:31 - Generated MEI presentation ordering: [['roi_36_seed_222', 'roi_60_seed_222', 'roi_24_seed_111', 'roi_45_seed_111'], ['roi_60_seed_222', 'roi_24_seed_111', 'roi_45_seed_111', 'roi_36_seed_222'], ['roi_24_seed_111', 'roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_222'], ['roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_222', 'roi_24_seed_111']].
+2025-08-26 11:45:49 - Saved metadata file at /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop/iter5/mei_metadata.yaml.
+2025-08-26 11:45:57 - Extracted the followin peak values for ROIs [24, 36, 45, 60]:
+x [31, 51, 70, -28], 
+y[44, -4, -22, 75].
+2025-08-26 11:45:57 - Presentation ordering indices: [0, 2, 3, 1]
+ corresponds to roi_id ordering of [24, 45, 60, 36].
+2025-08-26 11:47:51 - Retrieved and saved MEIs with the following unique ids: ['roi_24_seed_111', 'roi_36_seed_222', 'roi_45_seed_111', 'roi_60_seed_222'].
+2025-08-26 11:47:51 - Generated MEI presentation ordering: [['roi_36_seed_222', 'roi_60_seed_222', 'roi_24_seed_111', 'roi_45_seed_111'], ['roi_60_seed_222', 'roi_24_seed_111', 'roi_45_seed_111', 'roi_36_seed_222'], ['roi_24_seed_111', 'roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_222'], ['roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_222', 'roi_24_seed_111']].
+2025-08-26 11:47:51 - Saved metadata file at /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop/iter6/mei_metadata.yaml.
+2025-08-26 11:49:41 - Extracted the followin peak values for ROIs [24, 36, 45, 60]:
+x [31, 51, 70, -28], 
+y[44, -4, -22, 75].
+2025-08-26 11:49:41 - Presentation ordering indices: [0, 2, 3, 1]
+ corresponds to roi_id ordering of [24, 45, 60, 36].
+2025-08-26 11:49:41 - Retrieved and saved MEIs with the following unique ids: ['roi_24_seed_111', 'roi_24_seed_222', 'roi_36_seed_111', 'roi_36_seed_222', 'roi_45_seed_111', 'roi_45_seed_222', 'roi_60_seed_111', 'roi_60_seed_222'].
+2025-08-26 11:49:41 - Generated MEI presentation ordering: [['roi_24_seed_222', 'roi_45_seed_222', 'roi_24_seed_111', 'roi_60_seed_222'], ['roi_45_seed_222', 'roi_24_seed_111', 'roi_60_seed_222', 'roi_36_seed_111'], ['roi_24_seed_111', 'roi_60_seed_222', 'roi_36_seed_111', 'roi_45_seed_111'], ['roi_60_seed_222', 'roi_36_seed_111', 'roi_45_seed_111', 'roi_36_seed_222'], ['roi_36_seed_111', 'roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_111'], ['roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_111', 'roi_24_seed_222'], ['roi_36_seed_222', 'roi_60_seed_111', 'roi_24_seed_222', 'roi_45_seed_222'], ['roi_60_seed_111', 'roi_24_seed_222', 'roi_45_seed_222', 'roi_24_seed_111']].
+2025-08-26 11:49:41 - Saved metadata file at /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop/iter7/mei_metadata.yaml.
+2025-08-26 12:07:13 - Extracted the followin peak values for ROIs [24, 36, 45, 60]:
+x [31, 51, 70, -28], 
+y[44, -4, -22, 75].
+2025-08-26 12:07:13 - Presentation ordering indices: [0, 2, 3, 1]
+ corresponds to roi_id ordering of [24, 45, 60, 36].
+2025-08-26 12:07:13 - Retrieved and saved MEIs with the following unique ids: ['roi_24_seed_111', 'roi_24_seed_222', 'roi_36_seed_111', 'roi_36_seed_222', 'roi_45_seed_111', 'roi_45_seed_222', 'roi_60_seed_111', 'roi_60_seed_222'].
+2025-08-26 12:07:13 - Generated MEI presentation ordering: [['roi_24_seed_222', 'roi_45_seed_222', 'roi_24_seed_111', 'roi_60_seed_222'], ['roi_45_seed_222', 'roi_24_seed_111', 'roi_60_seed_222', 'roi_36_seed_111'], ['roi_24_seed_111', 'roi_60_seed_222', 'roi_36_seed_111', 'roi_45_seed_111'], ['roi_60_seed_222', 'roi_36_seed_111', 'roi_45_seed_111', 'roi_36_seed_222'], ['roi_36_seed_111', 'roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_111'], ['roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_111', 'roi_24_seed_222'], ['roi_36_seed_222', 'roi_60_seed_111', 'roi_24_seed_222', 'roi_45_seed_222'], ['roi_60_seed_111', 'roi_24_seed_222', 'roi_45_seed_222', 'roi_24_seed_111']].
+2025-08-26 12:07:13 - Saved metadata file at /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop/iter7/mei_metadata.yaml.
+2025-08-26 13:15:33 - Extracted the followin peak values for ROIs [24, 36, 45, 60]:
+x [31, 51, 70, -28], 
+y[44, -4, -22, 75].
+2025-08-26 13:15:33 - Presentation ordering indices: [0, 2, 3, 1]
+ corresponds to roi_id ordering of [24, 45, 60, 36].
+2025-08-26 13:15:33 - Retrieved and saved MEIs with the following unique ids: ['roi_24_seed_111', 'roi_24_seed_222', 'roi_36_seed_111', 'roi_36_seed_222', 'roi_45_seed_111', 'roi_45_seed_222', 'roi_60_seed_111', 'roi_60_seed_222'].
+2025-08-26 13:15:33 - Generated MEI presentation ordering: [['roi_24_seed_222', 'roi_45_seed_222', 'roi_24_seed_111', 'roi_60_seed_222'], ['roi_45_seed_222', 'roi_24_seed_111', 'roi_60_seed_222', 'roi_36_seed_111'], ['roi_24_seed_111', 'roi_60_seed_222', 'roi_36_seed_111', 'roi_45_seed_111'], ['roi_60_seed_222', 'roi_36_seed_111', 'roi_45_seed_111', 'roi_36_seed_222'], ['roi_36_seed_111', 'roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_111'], ['roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_111', 'roi_24_seed_222'], ['roi_36_seed_222', 'roi_60_seed_111', 'roi_24_seed_222', 'roi_45_seed_222'], ['roi_60_seed_111', 'roi_24_seed_222', 'roi_45_seed_222', 'roi_24_seed_111']].
+2025-08-26 13:15:33 - Saved metadata file at /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop/iter7/mei_metadata.yaml.
+2025-08-26 14:04:51 - Extracted the followin peak values for ROIs [24, 36, 45, 60]:
+x [31, 51, 70, -28], 
+y[44, -4, -22, 75].
+2025-08-26 14:04:51 - Presentation ordering indices: [0, 2, 3, 1]
+ corresponds to roi_id ordering of [24, 45, 60, 36].
+2025-08-26 14:04:51 - Retrieved and saved MEIs with the following unique ids: ['roi_24_seed_111', 'roi_24_seed_222', 'roi_36_seed_111', 'roi_36_seed_222', 'roi_45_seed_111', 'roi_45_seed_222', 'roi_60_seed_111', 'roi_60_seed_222'].
+2025-08-26 14:04:51 - Generated MEI presentation ordering: [['roi_24_seed_222', 'roi_45_seed_222', 'roi_24_seed_111', 'roi_60_seed_222'], ['roi_45_seed_222', 'roi_24_seed_111', 'roi_60_seed_222', 'roi_36_seed_111'], ['roi_24_seed_111', 'roi_60_seed_222', 'roi_36_seed_111', 'roi_45_seed_111'], ['roi_60_seed_222', 'roi_36_seed_111', 'roi_45_seed_111', 'roi_36_seed_222'], ['roi_36_seed_111', 'roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_111'], ['roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_111', 'roi_24_seed_222'], ['roi_36_seed_222', 'roi_60_seed_111', 'roi_24_seed_222', 'roi_45_seed_222'], ['roi_60_seed_111', 'roi_24_seed_222', 'roi_45_seed_222', 'roi_24_seed_111']].
+2025-08-26 14:04:51 - Saved metadata file at /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop/iter7/mei_metadata.yaml.
+2025-08-26 15:14:07 - Extracted the followin peak values for ROIs [24, 36, 45, 60]:
+x [31, 51, 70, -28], 
+y[44, -4, -22, 75].
+2025-08-26 15:14:07 - Presentation ordering indices: [0, 2, 3, 1]
+ corresponds to roi_id ordering of [24, 45, 60, 36].
+2025-08-26 15:14:08 - Retrieved and saved MEIs with the following unique ids: ['roi_24_seed_111', 'roi_24_seed_222', 'roi_36_seed_111', 'roi_36_seed_222', 'roi_45_seed_111', 'roi_45_seed_222', 'roi_60_seed_111', 'roi_60_seed_222'].
+2025-08-26 15:14:08 - Generated MEI presentation ordering: [['roi_24_seed_222', 'roi_45_seed_222', 'roi_24_seed_111', 'roi_60_seed_222'], ['roi_45_seed_222', 'roi_24_seed_111', 'roi_60_seed_222', 'roi_36_seed_111'], ['roi_24_seed_111', 'roi_60_seed_222', 'roi_36_seed_111', 'roi_45_seed_111'], ['roi_60_seed_222', 'roi_36_seed_111', 'roi_45_seed_111', 'roi_36_seed_222'], ['roi_36_seed_111', 'roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_111'], ['roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_111', 'roi_24_seed_222'], ['roi_36_seed_222', 'roi_60_seed_111', 'roi_24_seed_222', 'roi_45_seed_222'], ['roi_60_seed_111', 'roi_24_seed_222', 'roi_45_seed_222', 'roi_24_seed_111']].
+2025-08-26 15:14:08 - Saved metadata file at /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop/iter7/mei_metadata.yaml.
+2025-08-26 15:53:35 - Extracted the followin peak values for ROIs [24, 36, 45, 60]:
+x [31, 51, 70, -28], 
+y[44, -4, -22, 75].
+2025-08-26 15:53:35 - Presentation ordering indices: [0, 2, 3, 1]
+ corresponds to roi_id ordering of [24, 45, 60, 36].
+2025-08-26 15:53:35 - Retrieved and saved MEIs with the following unique ids: ['roi_24_seed_111', 'roi_24_seed_222', 'roi_36_seed_111', 'roi_36_seed_222', 'roi_45_seed_111', 'roi_45_seed_222', 'roi_60_seed_111', 'roi_60_seed_222'].
+2025-08-26 15:53:35 - Generated MEI presentation ordering: [['roi_24_seed_222', 'roi_45_seed_222', 'roi_24_seed_111', 'roi_60_seed_222'], ['roi_45_seed_222', 'roi_24_seed_111', 'roi_60_seed_222', 'roi_36_seed_111'], ['roi_24_seed_111', 'roi_60_seed_222', 'roi_36_seed_111', 'roi_45_seed_111'], ['roi_60_seed_222', 'roi_36_seed_111', 'roi_45_seed_111', 'roi_36_seed_222'], ['roi_36_seed_111', 'roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_111'], ['roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_111', 'roi_24_seed_222'], ['roi_36_seed_222', 'roi_60_seed_111', 'roi_24_seed_222', 'roi_45_seed_222'], ['roi_60_seed_111', 'roi_24_seed_222', 'roi_45_seed_222', 'roi_24_seed_111']].
+2025-08-26 15:53:35 - Saved metadata file at /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop/iter7/mei_metadata.yaml.
+2025-08-26 17:24:15 - Extracted the followin peak values for ROIs [24, 36, 45, 60]:
+x [31, 51, 70, -28], 
+y[44, -4, -22, 75].
+2025-08-26 17:24:15 - Presentation ordering indices: [0, 2, 3, 1]
+ corresponds to roi_id ordering of [24, 45, 60, 36].
+2025-08-26 17:24:16 - Retrieved and saved MEIs with the following unique ids: ['roi_24_seed_111', 'roi_24_seed_222', 'roi_36_seed_111', 'roi_36_seed_222', 'roi_45_seed_111', 'roi_45_seed_222', 'roi_60_seed_111', 'roi_60_seed_222'].
+2025-08-26 17:24:16 - Generated MEI presentation ordering: [['roi_24_seed_222', 'roi_45_seed_222', 'roi_24_seed_111', 'roi_60_seed_222'], ['roi_45_seed_222', 'roi_24_seed_111', 'roi_60_seed_222', 'roi_36_seed_111'], ['roi_24_seed_111', 'roi_60_seed_222', 'roi_36_seed_111', 'roi_45_seed_111'], ['roi_60_seed_222', 'roi_36_seed_111', 'roi_45_seed_111', 'roi_36_seed_222'], ['roi_36_seed_111', 'roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_111'], ['roi_45_seed_111', 'roi_36_seed_222', 'roi_60_seed_111', 'roi_24_seed_222'], ['roi_36_seed_222', 'roi_60_seed_111', 'roi_24_seed_222', 'roi_45_seed_222'], ['roi_60_seed_111', 'roi_24_seed_222', 'roi_45_seed_222', 'roi_24_seed_111']].
+2025-08-26 17:24:16 - Saved metadata file at /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop/iter7/mei_metadata.yaml.
