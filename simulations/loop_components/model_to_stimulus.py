@@ -44,6 +44,7 @@ from openretina.insilico.stimulus_optimization.regularizer import (
     TemporalGaussianLowPassFilterProcessor,
 )
 from openretina.models.core_readout import load_core_readout_model
+from openretina.modules.layers.ensemble import EnsembleModel
 
 from .utils import time_it
 
@@ -72,6 +73,30 @@ def load_pretrained_model(checkpoint_path: str) -> BaseCoreReadout:
     model = load_core_readout_model(checkpoint_path,device=DEVICE, is_gru_model=is_gru_model)
     return model
 
+def load_pretrained_ensemble_model(ckpt_dir: str,seeds: List[str],set_eval=True) -> List[BaseCoreReadout]:
+    models = []
+    for seed in seeds:
+        ckpt_path = os.path.join(ckpt_dir, f"seed_{seed}.ckpt")
+        print(f"Loading model from {ckpt_path}")
+        model = load_pretrained_model(ckpt_path)
+        if set_eval:
+            model.eval()
+        models.append(model)
+
+    ensemble_model = EnsembleModel(*models)
+    return ensemble_model
+
+def get_seed_and_path(ckpt_dir: str) -> Dict[int,str]:
+    seed_and_path = {}
+    for file in os.listdir(ckpt_dir):
+        if file.endswith(".ckpt") and "seed_" in file:
+            seed_str = file.split("seed_")[-1].split(".ckpt")[0]
+            try:
+                seed = int(seed_str)
+                seed_and_path[seed] = os.path.join(ckpt_dir, file)
+            except ValueError:
+                log.warning(f"Could not convert {seed_str} to int.")
+    return seed_and_path
 
 
 def generate_optimization_components(stimulus_range_constraints: Dict[str, float] = STIMULUS_RANGE_CONSTRAINTS,
@@ -114,7 +139,6 @@ def generate_mei(model: BaseCoreReadout,
     if next(model.parameters()).device != DEVICE:
         model = model.to(DEVICE)
 
-    data_info = model.hparams["data_info"] # check if there is original stimulus stats in there mean sd???
     stimulus = torch.randn(stimulus_shape, requires_grad=True, device=DEVICE)
     stimulus.data = stimulus.data * 0.1
 
@@ -252,52 +276,20 @@ def generate_meis_with_n_random_seeds(
     return all_meis
 
 
-
-#@time_it
-def train_model_online(cfg: DictConfig,
-                       neuron_data_dict:Dict[str,ResponsesTrainTestSplit],
-                       movies_dict:Dict[str,MoviesTrainTestSplit] | MoviesTrainTestSplit) -> Tuple[BaseCoreReadout,Dict[int, float], str]:
-    
-    log.info("Logging full config:")
-    log.info(OmegaConf.to_yaml(cfg))
-
-    if cfg.paths.cache_dir is None:
-        raise ValueError("Please provide a cache_dir for the data in the config file or as a command line argument.")
-
-    ### Set cache folder
-    os.environ["OPENRETINA_CACHE_DIRECTORY"] = cfg.paths.cache_dir
-
-    ### Display log directory for ease of access
-    log.info(f"Saving run logs at: {cfg.paths.output_dir}")
-
-  
-    if cfg.check_stimuli_responses_match:
-        for session, neuron_data in neuron_data_dict.items():
-            neuron_data.check_matching_stimulus(movies_dict[session]) # type: ignore
-
-    dataloaders = hydra.utils.instantiate( # dict[str, dict[str, DataLoader]]
-        cfg.dataloader,
-        neuron_data_dictionary=neuron_data_dict,
-        movies_dictionary=movies_dict,
-    )
-
-    data_info = compute_data_info(neuron_data_dict, movies_dict)
-
+def single_training_loop(dataloaders,cfg,data_info,log,load_model_path=None,seed= None):
     train_loader = data.DataLoader(
         LongCycler(dataloaders["train"], shuffle=True), batch_size=None, num_workers=0, pin_memory=True
     )
     valid_loader = ShortCycler(dataloaders["validation"])
 
-    if cfg.seed is not None:
+    if seed is not None:
+        lightning.pytorch.seed_everything(seed)
+    elif cfg.seed is not None:
         lightning.pytorch.seed_everything(cfg.seed)
 
-    # ## Assign missing n_neurons_dict to model
-    # cfg.model.n_neurons_dict = data_info["n_neurons_dict"]
-    # log.info(f"Instantiating model <{cfg.model._target_}>")
-    # model = hydra.utils.instantiate(cfg.model, data_info=data_info)
-
     ## Model init
-    load_model_path = cfg.paths.get("load_model_path")
+    if load_model_path is None:
+        load_model_path = cfg.paths.get("load_model_path")
     
     log.info(f"Loading model from <{load_model_path}>")
     is_gru_model = "gru" in cfg.model._target_.lower() if hasattr(cfg.model, "_target_") else False
@@ -330,34 +322,110 @@ def train_model_online(cfg: DictConfig,
     trainer: lightning.Trainer = hydra.utils.instantiate(cfg.trainer, logger=logger_array, callbacks=callbacks)
     trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=valid_loader)
 
+
+    # Get the checkpoint callback from your callbacks list
+    checkpoint_callback = next(c for c in callbacks if isinstance(c, lightning.pytorch.callbacks.ModelCheckpoint))
+    if checkpoint_callback is None:
+        raise RuntimeError("No ModelCheckpoint callback found. Ensure save_top_k >= 1 and monitor are set.")
+
+
+    # After training completes:
+    best_model_path = checkpoint_callback.best_model_path
+    if not best_model_path:
+        raise RuntimeError("best_model_path is empty. Check ModelCheckpoint(monitor=..., save_top_k>=1).")
+
+
+    # load best model for testing
+    log.info(f"Loading best model from {best_model_path} for testing and inference.")
+
+    #DEBUG:MAKE SURE SESSION DATA INFO AND NNEURONS DICT IS THERE 
+    model = load_core_readout_model(best_model_path, DEVICE, is_gru_model=is_gru_model)
+
     log.info("All dataloaders...")
     short_cyclers = [(n, ShortCycler(dl)) for n, dl in dataloaders.items()]
     dataloader_mapping = {f"DataLoader {i}": x[0] for i, x in enumerate(short_cyclers)}
     log.info(f"Dataloader mapping: {dataloader_mapping}")
-    trainer.test(model, dataloaders=[c for _, c in short_cyclers], ckpt_path="best")
+    # test with model passed
+    trainer.test(model, dataloaders=[c for _, c in short_cyclers], ckpt_path=None)
 
 
     ### Testing
     log.info("Testing individual neurons!")
-    neuron_testset_correl_dict = get_single_neuron_test_correlations(dataloaders, model)
-    assert len(neuron_testset_correl_dict) == 1, "Expected only one session in the test set for online training."
-    session_name,neuron_testset_correl = neuron_testset_correl_dict.popitem()  # get first session correlations
-    log.info(f"Test set neuron correlations statistics (mean,std,min,max) for session {session_name}: {[func(list(neuron_testset_correl.values())) for func in [np.mean, np.std, np.min, np.max]]}")
+    neuron_testset_correl = get_single_neuron_test_correlations(dataloaders, model)
+    log.info(f"Test set neuron correlations statistics (mean,std,min,max): {[func(list(neuron_testset_correl.values())) for func in [np.mean, np.std, np.min, np.max]]}")
     
-    # Get the checkpoint callback from your callbacks list
-    checkpoint_callback = next(c for c in callbacks if isinstance(c, lightning.pytorch.callbacks.ModelCheckpoint))
+    return model,neuron_testset_correl, best_model_path
 
-    # After training completes:
-    best_model_path = checkpoint_callback.best_model_path
+
+#@time_it
+def train_model_online(cfg: DictConfig,
+                       neuron_data_dict:Dict[str,ResponsesTrainTestSplit],
+                       movies_dict:Dict[str,MoviesTrainTestSplit] | MoviesTrainTestSplit) -> \
+                       Tuple[EnsembleModel | BaseCoreReadout, Dict[int,float], Dict[int,str] | str]:
+    
+    log.info("Logging full config:")
+    log.info(OmegaConf.to_yaml(cfg))
+
+    if cfg.paths.cache_dir is None:
+        raise ValueError("Please provide a cache_dir for the data in the config file or as a command line argument.")
+
+    ### Set cache folder
+    os.environ["OPENRETINA_CACHE_DIRECTORY"] = cfg.paths.cache_dir
+
+    ### Display log directory for ease of access
+    log.info(f"Saving run logs at: {cfg.paths.output_dir}")
+
+  
+    if cfg.check_stimuli_responses_match:
+        for session, neuron_data in neuron_data_dict.items():
+            neuron_data.check_matching_stimulus(movies_dict[session]) # type: ignore
+
+    dataloaders = hydra.utils.instantiate( # dict[str, dict[str, DataLoader]]
+        cfg.dataloader,
+        neuron_data_dictionary=neuron_data_dict,
+        movies_dictionary=movies_dict,
+    )
+
+    data_info = compute_data_info(neuron_data_dict, movies_dict)
+
+    is_ensemble_model =cfg.get("is_ensemble_model", False)
+    log.info(f"Is ensemble model: {is_ensemble_model}")
+    if is_ensemble_model:
+        assert os.path.isdir(cfg.paths.load_model_path), "For ensemble model, load_model_path should be a directory containing seed_x.ckpt files."
+        seed_and_path = get_seed_and_path(cfg.paths.load_model_path)
+        log.info(f"Found {len(seed_and_path)} seeds in {cfg.paths.load_model_path}: {list(seed_and_path.keys())}")
+
+        all_models = []
+        best_model_path = {}
+        for seed, path in seed_and_path.items():
+            log.info(f"Loading model for seed {seed} from {path}")
+
+            # perform single training loop for each model
+            model,_,best_path = single_training_loop(dataloaders, 
+                                                        cfg, data_info, 
+                                                        log, 
+                                                        load_model_path=path,
+                                                        seed=seed)
+            all_models.append(model)
+            best_model_path[seed] = best_path
+
+        # bind to ensemble and test
+        model = EnsembleModel(*all_models)
+        neuron_testset_correl = get_single_neuron_test_correlations(dataloaders, model)
+    else:
+
+        model,neuron_testset_correl, best_model_path = single_training_loop(dataloaders, cfg, data_info, log)
 
     return model,neuron_testset_correl, best_model_path
 
 
 
-def get_single_neuron_test_correlations(dataloaders , model: BaseCoreReadout) -> Dict[str, Dict[int, float]]:
+def get_single_neuron_test_correlations(dataloaders , model: BaseCoreReadout | EnsembleModel) ->  Dict[int, float]:
     """Calculate the correlation between model predictions and targets for each neuron in each session in the test session."""
 
     neuron_correlations = {}
+    if len(dataloaders["test"]) != 1:
+        raise ValueError(f"Expected only one session in the test set for online training. but found {len(dataloaders['test'])} sessions.")
 
 
     for session_id, session_dataloader in dataloaders["test"].items():
@@ -389,7 +457,7 @@ def get_single_neuron_test_correlations(dataloaders , model: BaseCoreReadout) ->
             corr = np.corrcoef(pred, target)[0, 1] if np.var(pred) > 0 and np.var(target) > 0 else 0
             session_correlations[i] = corr
             
-        neuron_correlations[session_id] = session_correlations
+        neuron_correlations = session_correlations
 
     return neuron_correlations
         
