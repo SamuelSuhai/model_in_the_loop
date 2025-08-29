@@ -1,6 +1,7 @@
 import os
 import datajoint as dj
 import subprocess
+import pandas as pd
 import torch
 import warnings
 warnings.simplefilter("ignore", FutureWarning)
@@ -975,7 +976,6 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         self.seeds = seeds
         self.colors = plt.cm.nipy_spectral(np.linspace(0, 1,len(self.seeds)))
 
-        self.testset_correl_min = 0.4
 
 
     def plot_seed_respones(self,neuron_id: int,ax: plt.Axes, optimization_window= (10,20),response_window = (21,50)):
@@ -1085,14 +1085,14 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
     
 
 
-    def get_neuron_idxs_passing_criterion(self) -> List[int]:
+    def apply_quality_filter(self) -> None:
 
-        passing_neuron_idxs = []
+        neuron_idxs_passing_filter = []
         for neuron_idx, corr in self.neuron_testset_correls.items():
-            if corr >= self.testset_correl_min:
-                passing_neuron_idxs.append(neuron_idx)
+            if corr >= self.mei_generation_params["min_testset_correl"]:
+                neuron_idxs_passing_filter.append(neuron_idx)
         
-        return passing_neuron_idxs
+        self.neuron_idxs_passing_filter = neuron_idxs_passing_filter
     
 
     def get_roi2rgb_and_alpha_255_map(self,
@@ -1206,92 +1206,152 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
         ## Model TODO
         
-
+    def select_subset_of_meis_for_each_roi(self):
+        """
+        Selects a subset of MEIs for rach roi to show.
+        reurns dict with roi_id as key and mei_id list as value.
+        requieres:
+        dict with roi_id as key and dict as value where the dict has info on 
+        a) cell type
+        b) cell responses to all meis (scalar values)
+        c) if the roi is stable or not sting eigher stale or unstale
+        
+        Uses the following heuristic: 
+        1. for a given roi_id,
+            a) initialize a list 
+            if its mei is stable:
+                i) get 3 high performing meis (itself, other celltype)
+                get roi cell type and see if there is another one with same cell type. add it if so
+                then take the top other mei (top 2 if no other cell type) with the strongest responses for the roi. 
+                ii) then get mediocre perfomring mei 1 and the worst performing mei 1
+            
+            if mei not stable:
+                i) again get 3 highperforming meis (itself seed 1, itself seed 2, just absolute best performing other mei)
+                ii) then get mediocre performing mei 1 and the worst performing mei 1
+        
+        reuturn the dict with roi id as key and list of mei ids as value.
+        """
+        pass
 
 
     def mei_subanalysis(self,
-                        new_session_id: str,
-                        neurons_idxs_to_analyze: List[int],
                         progress_callback: Optional[Callable] = None,
                         ) -> None:
         """lil wrapper for MEI analysys"""
 
-        if len(neurons_idxs_to_analyze) == 0:
-                raise ValueError("No neurons to perform MEI analysis on.\
+        if len(self.neuron_idxs_passing_filter) == 0:
+                raise ValueError(f"No neurons to perform MEI analysis on.\
                                  \nSelect less strtict filtering criterium and call mei_subanalysis again.\
-                                 \nTestset correlations: {}".format(self.neuron_testset_correls))
-            
-        # map roi_id to model neuron idx
-        self.roi2readout_idx_wmeis = {roi:idx for roi,idx in self.roi_ids2readout_idx.items() if idx in neurons_idxs_to_analyze}
+                                 \nCurrent criterium: min_testset_correl = {self.mei_generation_params['min_testset_correl']} \
+                                 \nTestset correlations: {self.neuron_testset_correls}")
+        
 
+        # map roi_id to model neuron idx
+        self.roi2readout_idx_wmeis = {roi:idx for roi,idx in self.roi_ids2readout_idx.items() if idx in self.neuron_idxs_passing_filter}
+        self.readout_idx_wmei2rois = {idx:roi for roi,idx in self.roi2readout_idx_wmeis.items()}
 
         if progress_callback is not None:
             progress_callback(70)
-                    # center readouts in mei generation 
         
-        # center the readouts            
+        ## center the readouts            
         center = Center(target_mean = 0.0)
         if self.model_configs["is_ensemble_model"]:
             self.scaled_means_before_centering = []
             for member in self.model.members:
-                self.scaled_means_before_centering.append(get_model_gaussian_scaled_means(member,session= new_session_id)) # type: ignore
+                self.scaled_means_before_centering.append(get_model_gaussian_scaled_means(member,session= self.new_session_id)) # type: ignore
                 center(self.model)
         else:
-            self.scaled_means_before_centering = get_model_gaussian_scaled_means(self.model,session= new_session_id)
+            self.scaled_means_before_centering = get_model_gaussian_scaled_means(self.model,session= self.new_session_id)
             center(self.model)
         
+
+
+        ## decide which neurons get stable and which unstable meis
+        idx2stabiliy = self.get_stable_unstable_split(self.neuron_idxs_passing_filter)
         
-        self.neuron_seed_mei_dict = generate_meis_with_n_random_seeds(
-                                        model = self.model,
-                                        new_session_id = new_session_id,
-                                        random_seeds =self.seeds,
-                                        mei_generation_params= self.mei_generation_params,
-                                        neuron_ids_to_analyze = neurons_idxs_to_analyze, # NOTE: this will optimize each id individually 
-                                        set_model_to_eval_mode = False, # model in training mode for noisy MEIs
-                                    )
+        # initialize mei data containter
+        mei_data_container_entries = []
 
+        ## generate meis
+        for phase in ['unstable', 'stable']:
             
+            set_model_to_eval_mode = True if phase == 'stable' else False
+            neuron_ids_to_analyze = [neuron_id for neuron_id, stability in idx2stabiliy.items() if stability == phase]
+            seeds = self.seeds if phase == 'unstable' else [self.seeds[0]] # only one seed for stable meis
 
-        ## generate responses for the MEIs and decompose them
-        self.neuron_seed_mei_responses = {neuron_id: {} for neuron_id in self.neuron_seed_mei_dict.keys()}
-        self.neuron_seed_decomposed_meis = {neuron_id: {} for neuron_id in self.neuron_seed_mei_dict.keys()}
-        for neuron_id,seed_dict in self.neuron_seed_mei_dict.items():
-            for seed,mei in seed_dict.items():
+            neuron_seed_mei_dict = generate_meis_with_n_random_seeds(
+                                            model = self.model,
+                                            new_session_id = self.new_session_id,
+                                            random_seeds = seeds,
+                                            mei_generation_params= self.mei_generation_params,
+                                            neuron_ids_to_analyze = neuron_ids_to_analyze, # NOTE: this will optimize each id individually 
+                                            set_model_to_eval_mode = set_model_to_eval_mode, # model in training mode for noisy MEIs
+                                            )
 
-                # decompose the MEIs
-                temporal_kernels, spatial_kernels, stimulus_time = decompose_mei(stimulus = mei.detach().cpu().numpy())
-                self.neuron_seed_decomposed_meis[neuron_id][seed] = {
-                    "temporal_kernels": temporal_kernels,
-                    "spatial_kernels": spatial_kernels,
-                    "stimulus_time": stimulus_time,
-                }
-                if self.mei_generation_params["reconstruct_mei"]:
-                    reconstruction = reconstruct_mei_from_decomposed(
-                                temporal_kernels=temporal_kernels,
-                                spatial_kernels=spatial_kernels,)
-                    reconstruction = torch.tensor(reconstruction,dtype=torch.float32).to(self.model.device)
-                    assert reconstruction.shape == mei.shape, "Reconstructed MEI shape does not match original MEI shape."
-                    
-                    # overwrite the mei with the reconstruction
-                    mei = reconstruction
-                    self.neuron_seed_mei_dict[neuron_id][seed] = mei
+                
+            ## decompose meis
+            for neuron_id,seed_dict in self.neuron_seed_mei_dict.items():
+                for seed,mei in seed_dict.items():
+
+                    # decompose the MEIs
+                    temporal_kernels, spatial_kernels, _ = decompose_mei(stimulus = mei.detach().cpu().numpy())
+               
+
+                    if self.mei_generation_params["reconstruct_mei"]:
+                        reconstruction = reconstruct_mei_from_decomposed(
+                                    temporal_kernels=temporal_kernels,
+                                    spatial_kernels=spatial_kernels,)
+                        reconstruction = torch.tensor(reconstruction,dtype=torch.float32).to(self.model.device)
+                        assert reconstruction.shape == mei.shape, "Reconstructed MEI shape does not match original MEI shape."
+                        mei = reconstruction # use the reconstructed MEI for further analysis
+
+                        # add entry to data container 
+                        mei_data_container_entries.append({
+                            "readout_idx": neuron_id,
+                            "roi_id": self.readout_idx_wmei2rois[neuron_id],
+                            "mei_id": f"roi_{self.readout_idx_wmei2rois[neuron_id]}_seed_{seed}",
+                            "seed": seed,
+                            "mei": mei.detach(),
+                            "temporal_kernels": temporal_kernels,
+                            "spatial_kernels": spatial_kernels,
+                            "stability": phase,
+                        })
+                        
+
+            # make df container 
+            self.mei_data_container = pd.DataFrame(mei_data_container_entries)
+
+            ## responses: use batch of meis
+            mei_batch = self.mei_data_container['mei'].to_list()
+            mei_batch = torch.stack(mei_batch, dim=0).to(self.model.device)
+            all_neuron_ids = self.mei_data_container['readout_idx'].to_list()
+            all_responses = get_model_mei_response(model = self.model,
+                                                mei=mei_batch,
+                                                session_id = self.new_session_id,
+                                                neuron_id = all_neuron_ids,)
+            assert all_responses.shape[0] == mei_batch.shape[0], "Number of responses does not match number of MEIs."
+            assert all_responses.shape[2] == len(all_neuron_ids)
+            
+            # store the responses in the data container
+            self.mei_data_container['readout_idx_wmei_responses'] = [responses_to_mei.detach().cpu().numpy() for responses_to_mei in all_responses]
+
+            # get 
 
 
-                # responses 
-                response = get_model_mei_response(model = self.model,
-                                                    mei=mei,
-                                                    session_id = new_session_id,
-                                                    neuron_id = neuron_id,)
-                self.neuron_seed_mei_responses[neuron_id][seed] = response
 
         if progress_callback is not None:
             progress_callback(100)
     
-    def get_stable_unstable_split(self):
+    @staticmethod
+    def get_stable_unstable_split(readout_idxs: List[int]) -> Dict[int, str]:
         """
         Randomly selects 1/5 of neurons (or two which ever is larger) to generate unstable MEIs for.
         Outputs a dict with key neuron_redout_idx, and value `stable` or `unstable`."""
-        pass
+        
+        n_unstable = max(2, len(readout_idxs) // 5)
+        unstable_neurons = np.random.choice(readout_idxs, size=n_unstable, replace=False)
+        stability_dict = {idx: 'unstable' if idx in unstable_neurons else 'stable' for idx in readout_idxs}
+        return stability_dict
 
     def get_neuron_full_responses_to_meis(self):
         """
@@ -1314,7 +1374,33 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         """
         pass
 
+
+    def extract_and_preprocess(self) -> None:
+        
+        ## model training 
+        self.session_dict_raw = self.dj_table_holder('OpenRetinaHoeflingFormat')().extract_data()
+        
+        # preprocess and filter further 
+        self.movies_dict = load_stimuli(self.model_configs)
+
+        self.neuron_data_dict = preprocess_for_openretina(self.session_dict_raw,self.model_configs)
     
+    def train_model(self) -> None:
+
+        # load and refine model
+        self.model,self.neuron_testset_correls,self.best_model_ckp = train_model_online(self.model_configs,
+                                                                    self.neuron_data_dict,
+                                                                    self.movies_dict)
+
+
+        # store eome data
+        self.new_session_id = list(self.session_dict_raw.keys())[0]
+        
+        # mappings from roi_id to to model_neuron idx
+        self.roi_ids2readout_idx = {roi:idx for idx,roi in enumerate(self.neuron_data_dict[self.new_session_id].session_kwargs["roi_ids"].tolist())}
+
+
+
 
     def extract_and_train(self) -> None:
         ## model training 

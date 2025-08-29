@@ -13,5 +13,5 @@ stimulus_range_constraints: {
 }
 
 
-
+min_testset_correl: 0.4 # at wat correl to include in mei analysis
 reconstruct_mei: true

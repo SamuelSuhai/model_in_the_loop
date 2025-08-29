@@ -243,12 +243,21 @@ def reconstruct_mei_from_decomposed(
     return reconstructed_mei
     
 
-def get_model_mei_response(model: BaseCoreReadout, mei: torch.Tensor, session_id: str, neuron_id: int) -> np.ndarray:
+def get_model_mei_response(model: BaseCoreReadout, 
+                           mei: torch.Tensor, 
+                           session_id: str, 
+                           neuron_id: List[int]) -> np.ndarray:
+    """
+    Get model response but stay flexible with mei shape (4D or 5D) and neuron_id (int or list of int) and return shape (b,c,t,h,w) or (c,t,h,w)"""
     
     # check if mei correct shape of b,c,t,h,w
+    initial_ndim = mei.ndim
     if mei.ndim == 4:
         mei = mei.unsqueeze(0)
     
+    if isinstance(neuron_id, int):
+        neuron_id = [neuron_id]
+
     # check if on correct device
     if mei.device != DEVICE:
         mei = mei.to(DEVICE)
@@ -256,10 +265,12 @@ def get_model_mei_response(model: BaseCoreReadout, mei: torch.Tensor, session_id
     # set model to eval mode
     if model.training:
         model.eval()
-        
+        model.freeze()
 
     with torch.no_grad():
-        single_mei_response = model.forward(mei, data_key=session_id)[0, :, neuron_id].detach().cpu().numpy()
+        single_mei_response = model.forward(mei, data_key=session_id)[:, :, neuron_id].detach().cpu().numpy()
+    if initial_ndim == 4:
+        single_mei_response = single_mei_response[0]
     
     return single_mei_response
             
