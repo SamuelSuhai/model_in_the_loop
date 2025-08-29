@@ -955,24 +955,20 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
     def __init__(self,dj_table_holder,
                  model_configs,
-                 mei_optimization_params,
+                 mei_generation_params,
                  seeds: List[int],
-                 reconstruct_mei: bool = True,
                 ) -> None:
         
         self.dj_table_holder = dj_table_holder
 
       
         self.model_configs = model_configs
-        self.mei_optimization_params = mei_optimization_params
-
-        self.reconstruct_mei = reconstruct_mei
+        self.mei_generation_params = mei_generation_params
 
         # to store the data: the key is the index in the readout and not the roi_id
         self.neuron_seed_mei_dict = {}
         self.neuron_seed_mei_responses = {}
         self.neuron_seed_decomposed_meis = {}
-        self.model = None
 
         self.display_channel = 1 # UV channel 
 
@@ -1233,17 +1229,23 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             progress_callback(70)
                     # center readouts in mei generation 
         
-        # center the readouts
-        self.scaled_means_before_centering = get_model_gaussian_scaled_means(self.model,session= new_session_id)
+        # center the readouts            
         center = Center(target_mean = 0.0)
-        center(self.model)
+        if self.model_configs["is_ensemble_model"]:
+            self.scaled_means_before_centering = []
+            for member in self.model.members:
+                self.scaled_means_before_centering.append(get_model_gaussian_scaled_means(member,session= new_session_id)) # type: ignore
+                center(self.model)
+        else:
+            self.scaled_means_before_centering = get_model_gaussian_scaled_means(self.model,session= new_session_id)
+            center(self.model)
         
         
         self.neuron_seed_mei_dict = generate_meis_with_n_random_seeds(
                                         model = self.model,
                                         new_session_id = new_session_id,
                                         random_seeds =self.seeds,
-                                        mei_optimization_params= self.mei_optimization_params,
+                                        mei_generation_params= self.mei_generation_params,
                                         neuron_ids_to_analyze = neurons_idxs_to_analyze, # NOTE: this will optimize each id individually 
                                         set_model_to_eval_mode = False, # model in training mode for noisy MEIs
                                     )
@@ -1263,7 +1265,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                     "spatial_kernels": spatial_kernels,
                     "stimulus_time": stimulus_time,
                 }
-                if self.reconstruct_mei:
+                if self.mei_generation_params["reconstruct_mei"]:
                     reconstruction = reconstruct_mei_from_decomposed(
                                 temporal_kernels=temporal_kernels,
                                 spatial_kernels=spatial_kernels,)
@@ -1284,7 +1286,35 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
         if progress_callback is not None:
             progress_callback(100)
+    
+    def get_stable_unstable_split(self):
+        """
+        Randomly selects 1/5 of neurons (or two which ever is larger) to generate unstable MEIs for.
+        Outputs a dict with key neuron_redout_idx, and value `stable` or `unstable`."""
+        pass
 
+    def get_neuron_full_responses_to_meis(self):
+        """
+        For each neuron for which we have an mei, geht the model response to all meis.
+        Returns a matrix (nr neurons w meis, nr_meis, nr repsonse time points)"""
+        pass
+
+    def reduce_full_responses_to_mean_in_time_window(self):
+        """
+        Reduces the full responses to a mean in a time window.
+        read the time window from the config 
+        return (nr neurons w meis, nr_meis) matrix
+        """
+        pass
+        
+    def get_neuron_idx_celltype(self):
+        """
+        Fetches the celltype of the neurons for which we have meis.
+        return a dict with key neuron_readout_idx and value celltype int
+        """
+        pass
+
+    
 
     def extract_and_train(self) -> None:
         ## model training 

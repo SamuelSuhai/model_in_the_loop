@@ -631,6 +631,31 @@ def get_next_iteration_dir_from_remote(stimulus_output_dir: str,iteration_dir_na
     return next_iteation,next_dir
 
 
+def select_subset_of_meis_for_each_roi():
+    """
+    Selects a subset of MEIs for rach roi to show.
+    reurns dict with roi_id as key and mei_id list as value.
+    
+    Uses the following heuristic: 
+    1. for a given roi_id,
+        a) initialize a list 
+        if its mei is stable:
+            i) get 3 high performing meis (itself, other celltype)
+            get roi cell type and see if there is another one with same cell type. add it if so
+            then take the top other mei (top 2 if no other cell type) with the strongest responses for the roi. 
+            ii) then get mediocre perfomring mei 1 and the worst performing mei 1
+        
+        if mei not stable:
+            i) again get 3 highperforming meis (itself seed 1, itself seed 2, just absolute best performing other mei)
+            ii) then get mediocre performing mei 1 and the worst performing mei 1
+    
+    reuturn the dict with roi id as key and list of mei ids as value.
+    """
+    pass
+
+
+
+
 def create_single_mei_avis_and_metadata(
     rois_seed: List[Tuple[int,int]],
     neuron_seed_mei_dict: Dict[int,Dict[int,torch.Tensor]],

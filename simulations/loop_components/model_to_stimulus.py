@@ -54,17 +54,51 @@ log = logging.getLogger(__name__)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-# TODO: move to configs
 STIMULUS_SHAPE = (1, 2, 50, 18, 16)
 
-STIMULUS_RANGE_CONSTRAINTS = {
-    "norm": 30.0,
-    "x_min_green": -0.654,
-    "x_max_green": 6.269,
-    "x_min_uv": -0.913,
-    "x_max_uv": 6.269,
-}
 
+
+class IncreaseObjectiveFourierBasis(AbstractObjective):
+    """
+    In forward consrtucts a stimulus form the fourier components."""
+
+    def __init__(self, model: BaseCoreReadout, neuron_indices, data_key: str, response_reducer: ResponseReducer):
+        self.model = model
+        self.neuron_indices = neuron_indices
+        self.data_key = data_key
+        self.response_reducer = response_reducer
+
+    def forward(self, stimulus: torch.Tensor) -> torch.Tensor:
+        pass
+class IncreaseObjectiveSeparable(AbstractObjective):
+    """
+    ."""
+
+    def __init__(self, model: BaseCoreReadout, neuron_indices, data_key: str, response_reducer: ResponseReducer):
+        super().__init__(model, data_key)
+        self.model = model
+        self._neuron_indices = [neuron_indices] if isinstance(neuron_indices, int) else neuron_indices
+        self.data_key = data_key
+        self._response_reducer = response_reducer
+
+    def forward(self, stimulus: torch.Tensor) -> torch.Tensor:
+        """ assumes stimulus is shae (1,2 ,time + hight*width), will reshape the laset hight*width entries and mulitpy by time to get full stim"""
+        spatial_kernel_ch0 = stimulus[0,0,50:].reshape(18,16)
+        spatial_kernel_ch1 = stimulus[0,1,50:].reshape(18,16)
+        temporal_kernel_ch0 = stimulus[0,0,:50]
+        temporal_kernel_ch1 = stimulus[0,1,:50]
+
+        full_stim_ch0 = torch.einsum("t,hw->thw",temporal_kernel_ch0,spatial_kernel_ch0)
+        full_stim_ch1 = torch.einsum("t,hw->thw",temporal_kernel_ch1,spatial_kernel_ch1)
+        full_stim = torch.stack([full_stim_ch0,full_stim_ch1],dim=0).unsqueeze(0)
+        responses = self.model_forward(full_stim)
+ 
+        # responses.shape = (time, neuron)
+        selected_responses = responses[:, self._neuron_indices]
+        mean_response = selected_responses.mean(dim=-1)
+        # average over time dimension
+        single_score = self._response_reducer.forward(mean_response)
+        return single_score
 
 
 
@@ -99,7 +133,7 @@ def get_seed_and_path(ckpt_dir: str) -> Dict[int,str]:
     return seed_and_path
 
 
-def generate_optimization_components(stimulus_range_constraints: Dict[str, float] = STIMULUS_RANGE_CONSTRAINTS,
+def generate_optimization_components(stimulus_range_constraints: Dict[str, float],
                                      reducer_axis: int= 0,
                                      reducer_start: int = 10,
                                      reducer_length: int = 10) -> Tuple[List[Any], ResponseReducer]:
@@ -141,10 +175,11 @@ def generate_mei(model: BaseCoreReadout,
 
     stimulus = torch.randn(stimulus_shape, requires_grad=True, device=DEVICE)
     stimulus.data = stimulus.data * 0.1
-
     objective = IncreaseObjective(
         model, neuron_indices=neuron_id, data_key=new_session_id, response_reducer=response_reducer
     )
+
+    
     optimization_stopper = OptimizationStopper(max_iterations=max_iterations)
     optimizer_init_fn = partial(torch.optim.SGD, lr=lr)
 
@@ -221,6 +256,7 @@ def get_model_mei_response(model: BaseCoreReadout, mei: torch.Tensor, session_id
     # set model to eval mode
     if model.training:
         model.eval()
+        
 
     with torch.no_grad():
         single_mei_response = model.forward(mei, data_key=session_id)[0, :, neuron_id].detach().cpu().numpy()
@@ -231,9 +267,9 @@ def get_model_mei_response(model: BaseCoreReadout, mei: torch.Tensor, session_id
 
 
 def generate_meis_with_n_random_seeds(
-    model: BaseCoreReadout,
-    new_session_id: str,
-    mei_optimization_params: Dict[str, Any], 
+    model: BaseCoreReadout | EnsembleModel,
+    new_session_id: str, 
+    mei_generation_params: Dict[str, Any], 
     random_seeds: List = [42],
     neuron_ids_to_analyze: List[int] = [0], # NOTE: this will optimize each id individually
     set_model_to_eval_mode: bool = False,
@@ -243,16 +279,17 @@ def generate_meis_with_n_random_seeds(
 
     if set_model_to_eval_mode:
         model.eval()
+        model.freeze()
     else:
         if not model.training:
             model.train()
 
     # generate optimization components
     stimulus_postprocessor_list, response_reducer = generate_optimization_components(
-        stimulus_range_constraints=STIMULUS_RANGE_CONSTRAINTS,
+        stimulus_range_constraints=mei_generation_params["stimulus_range_constraints"],
         reducer_axis=0,
-        reducer_start=mei_optimization_params["reducer_start"],
-        reducer_length=mei_optimization_params["reducer_length"],
+        reducer_start=mei_generation_params["reducer_start"],
+        reducer_length=mei_generation_params["reducer_length"],
     )
     
     all_meis = {neuron_id: {} for neuron_id in neuron_ids_to_analyze}
@@ -269,8 +306,8 @@ def generate_meis_with_n_random_seeds(
                         response_reducer = response_reducer,
                         stimulus_shape= STIMULUS_SHAPE,
                         neuron_id = neuron_id,
-                        max_iterations=mei_optimization_params["max_iteration"],
-                        lr=mei_optimization_params["lr"],)
+                        max_iterations=mei_generation_params["max_iteration"],
+                        lr=mei_generation_params["lr"],)
                         
             all_meis[neuron_id][seed] = single_neuron_seed_mei
     return all_meis
@@ -462,86 +499,15 @@ def get_single_neuron_test_correlations(dataloaders , model: BaseCoreReadout | E
     return neuron_correlations
         
 
-#@time_it
 def preprocess_for_openretina(raw_neuron_data_dict:Dict[str,Dict[str,Any]],model_condigs) -> Dict[str,ResponsesTrainTestSplit]:
     filt_neuron_data =  filter_responses(raw_neuron_data_dict, **model_condigs.quality_checks)
     neuron_data_dict =  make_final_responses(filt_neuron_data,response_type="natural") 
     return neuron_data_dict
 
-#@time_it
-def save_new_stimulus_position(new_session_id: str ,full_path: str,raw_neuron_data_dict:Dict[str,Dict[str,Any]],neuron_id: int = 0) -> None:
-    """Retrieves peak RF position and saves that info in a yaml file in the stimuli directory."""
-    
-    if isinstance(neuron_id,list):
-        raise NotImplementedError("Only able to get peak from one neuron. not sure how to do this for many neurons yet.") 
 
-    x = raw_neuron_data_dict[new_session_id].get("rf_peak_x_um",0)[neuron_id] 
-    y = raw_neuron_data_dict[new_session_id].get("rf_peak_y_um",0)[neuron_id]
-
-    # convert from array values to type yaml perser can handle
-    if hasattr(x, "item"):
-        x = float(x.item())
-    if hasattr(y, "item"):
-        y = float(y.item())
-
-    stim_metadata = {"position":{"x": x, "y": y}}
-    
-    with open(full_path, "w") as f:
-        yaml.dump(stim_metadata, f, default_flow_style=False)
 
 def load_stimuli(or_config: DictConfig):
 
-    # are stmulus stats here???? ST WHAT PART IS CACHE_DIR NEEEDED???!!!
     movies_dict: MoviesTrainTestSplit = hydra.utils.call(or_config.data_io.stimuli) 
     return movies_dict
    
-
-
-def from_data_to_mei_video(cfg: DictConfig, raw_neuron_data_dict:Dict[str,Dict[str,Any]],neuron_ids = 0):
-
-    movies_dict = load_stimuli(cfg.model_configs)
-
-    neuron_data_dict = preprocess_for_openretina(raw_neuron_data_dict,cfg.model_configs)
-    
-    # load and refine model
-    model = train_model_online(cfg.model_configs,neuron_data_dict,movies_dict)
-    new_session_id = list(raw_neuron_data_dict.keys())[0]
-
-
-    # generate optimization components
-    stimulus_postprocessor, response_reducer = generate_optimization_components(
-        stimulus_range_constraints=STIMULUS_RANGE_CONSTRAINTS,
-        reducer_axis=0,
-        reducer_start=10,
-        reducer_length=10,
-    )
-    new_stimulus = generate_mei(model=model,
-                      new_session_id = new_session_id,
-                      stimulus_postprocessor = stimulus_postprocessor,
-                      response_reducer = response_reducer,
-                      stimulus_shape= STIMULUS_SHAPE,
-                      neuron_id = neuron_ids, 
-                      )
-    save_new_stimulus_position(new_session_id,
-                               full_path = os.path.join(cfg.paths.repo_directory, "data/stimuli",f"mei_{new_session_id}.yaml"),
-                               raw_neuron_data_dict=raw_neuron_data_dict,
-                               neuron_id=neuron_ids)
-
-
-
-
-
-@hydra.main(version_base="1.3", config_path="../../config", config_name="config")
-def main (cfg: DictConfig):
-
-    import pickle
-    with open("/gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/model_input/20200226_GCL0_iter0.pickle", "rb") as f:
-        raw_neuron_data_dict = pickle.load(f)
-
-    from_data_to_mei_video(cfg, raw_neuron_data_dict,0)
-
-if __name__ == "__main__":
-    main()
-
-    
-

@@ -1,0 +1,17 @@
+# optimization
+reducer_start: 10
+reducer_length: 10
+max_iteration:  100
+lr: 10 
+stimulus_range_constraints: {
+
+    norm: 30.0,
+    x_min_green: -0.654,
+    x_max_green: 6.269,
+    x_min_uv: -0.913,
+    x_max_uv: 6.269,
+}
+
+
+
+reconstruct_mei: true
