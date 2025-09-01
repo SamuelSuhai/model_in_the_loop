@@ -159,7 +159,7 @@ def get_model_gaussian_scaled_means(model: BaseCoreReadout, session: str) -> tor
     return session_readout.mask_mean * session_readout.gaussian_mean_scale
 
 #@time_it
-def generate_mei(model: BaseCoreReadout,
+def generate_mei(model: BaseCoreReadout | EnsembleModel,
                       new_session_id:str,
                       stimulus_postprocessor_list: List[Any],
                       response_reducer,
@@ -226,6 +226,8 @@ def reconstruct_mei_from_decomposed(
         temporal_kernels: List[np.ndarray],
         spatial_kernels: List[np.ndarray],
     ) -> np.ndarray:
+    """reconstructs MEI with outer product of spatial and temporal kerenel."""
+
     assert len(temporal_kernels) == len(spatial_kernels), "Number of temporal and spatial kernels must match"
     num_color_channels = len(temporal_kernels)
     dim_y, dim_x = spatial_kernels[0].shape
@@ -243,7 +245,7 @@ def reconstruct_mei_from_decomposed(
     return reconstructed_mei
     
 
-def get_model_mei_response(model: BaseCoreReadout, 
+def get_model_mei_response(model: BaseCoreReadout | EnsembleModel, 
                            mei: torch.Tensor, 
                            session_id: str, 
                            neuron_id: List[int]) -> np.ndarray:
@@ -270,6 +272,7 @@ def get_model_mei_response(model: BaseCoreReadout,
     with torch.no_grad():
         single_mei_response = model.forward(mei, data_key=session_id)[:, :, neuron_id].detach().cpu().numpy()
     if initial_ndim == 4:
+        # only keep batch dim if inputas not batched
         single_mei_response = single_mei_response[0]
     
     return single_mei_response
