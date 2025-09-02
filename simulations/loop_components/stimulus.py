@@ -85,7 +85,7 @@ def extract_selected_meis(rois_seed: List[Tuple[int,int]],
                         ) -> Dict[str,torch.Tensor]:
 
     """
-    from the mei_data_container whichas columns mei_ids (and redundantly roi_id and seed) it selects meis for the given roi_ids and seeds.
+
     """    
     selected_meis = {}
     for roi_id, seed in rois_seed:
@@ -95,12 +95,9 @@ def extract_selected_meis(rois_seed: List[Tuple[int,int]],
         if len(matching_rows) != 1:
             raise ValueError(f"MEI for roi_id {roi_id} and seed {seed} not found in mei_data_container.")
          
-        mei = matching_rows.iloc[0]['mei_tensor']
+        mei = matching_rows.iloc[0]['mei']
         unique_id = f"roi_{roi_id}_seed_{seed}"
-        assert matching_rows.iloc[0]['mei_id'] == unique_id, f"Mismatch in unique_id {unique_id} and mei_id {matching_rows.iloc[0]['mei_id']}."
-        if unique_id in selected_meis.keys():
-            print(f"Warning: Duplicate entry for {unique_id}. Overwriting previous MEI.")
-            log(f"Warning: Duplicate entry for {unique_id}. Overwriting previous MEI.")
+        assert matching_rows.iloc[0]['mei_id'] == unique_id, f"Mismatch in unique_id {unique_id} and mei_id {matching_rows.iloc[0]['mei_id']}."           
         selected_meis[unique_id] = mei
 
     return selected_meis                          
@@ -543,9 +540,9 @@ def retrieve_meis_and_save_as_avis(rois_seed: List[Tuple[int,int]],
     return list(selected_meis.keys())
 
 
-def generate_mei_ordering(roi_id2mei_ids: Dict[str,List[str]],reordered_roi_ids: List[int],seed = 42) -> List[List[str]]:
+def generate_mei_ordering(roi_id2mei_ids: Dict[int,List[str]],reordered_roi_ids: List[int],seed = 42) -> List[List[str]]:
     """
-    roi_ids2meis_ids: Dict[str,List[str]] -> the mapping from roi id to the mei_ids we want to show that roi
+    roi_ids2meis_ids: Dict[int,List[str]] -> the mapping from roi id to the mei_ids we want to show that roi
     reordered_roi_ids: the chronological order of the roi_ids we want to stimulate. 
 
     Does 2 things, each entry of the roi_ids2mei_ids is shuffled randomly, 
@@ -556,12 +553,7 @@ def generate_mei_ordering(roi_id2mei_ids: Dict[str,List[str]],reordered_roi_ids:
     # create the presentation ordering according to the reordered_roi_ids
     mei_presentation_ordering: List[List[str]] = []
     for roi_id in reordered_roi_ids:
-        roi_key = f"roi_{roi_id}"
-        if roi_key not in roi_id2mei_ids:
-            raise ValueError(f"roi_id {roi_id} not found in roi_ids2mei_ids mapping.")
-        mei_ids = roi_id2mei_ids[roi_key]
-        if not mei_ids:
-            raise ValueError(f"No MEI IDs found for roi_id {roi_id}.")
+        mei_ids = roi_id2mei_ids[roi_id]
         
         np.random.shuffle(mei_ids)
 
@@ -634,36 +626,11 @@ def get_next_iteration_dir_from_remote(stimulus_output_dir: str,iteration_dir_na
     return next_iteation,next_dir
 
 
-def check_mei_ids_overlap(roi_id2mei_ids: Dict[str,List[str]],retrieved_mei_ids: List[str]) -> None:
-    """
-    checks if all unique mei ids in the roi_id2mei_ids are equal sets to the retrieved_mei_ids list. 
-    So no extra and no missing mei ids.
-    """
-    # get all unique mei ids from the roi_id2mei_ids dict
-    all_mei_ids = set()
-    for mei_ids in roi_id2mei_ids.values():
-        all_mei_ids.update(mei_ids)
-    
-    retrieved_mei_ids_set = set(retrieved_mei_ids)
-
-    if all_mei_ids != retrieved_mei_ids_set:
-        missing_meis = all_mei_ids - retrieved_mei_ids_set
-        extra_meis = retrieved_mei_ids_set - all_mei_ids
-        error_message = "Mismatch between expected and retrieved MEI IDs."
-        if missing_meis:
-            error_message += f" Missing MEI IDs: {missing_meis}."
-        if extra_meis:
-            error_message += f" Extra MEI IDs: {extra_meis}."
-        raise ValueError(error_message)
-    else:
-        print("All MEI IDs match between expected and retrieved sets.")
-        log("All MEI IDs match between expected and retrieved sets.")
-
 
 
 def create_single_mei_avis_and_metadata(
     rois_seed: List[Tuple[int,int]],
-    roi_id2mei_ids: Dict[str,List[str]],
+    roi_id2mei_ids: Dict[int,List[str]],
     mei_data_container: pd.DataFrame,
     stimulus_table: Any,
     fit_gauss_2d_rf_table: Any,
@@ -673,8 +640,27 @@ def create_single_mei_avis_and_metadata(
 
     """
     Does the following steps:
+    1) Settles on a spatial order of the ROIs that maximizes distance between them, so they dont adapt
+    2) Generates a MEI presentation ordering that randomizes the MEIs for each ROI
+    3) retrieves the MEIs from the mei_data_container and saves them as avis in a new iteration directory
+    4) saves the metadata file with the positions, roi_ids and mei_ids to be presented in the same iteration directory
+
+    ROI_ID, SEED, MEI NAMING CONVENTION: roi_id is an int, seed is an int mei_id is a string of the form "roi_{roi_id}_seed_{seed}" 
     """
 
+    ## some checks 
+    # all roi seeds in data container
+    for roi_id, seed in rois_seed:
+        query = (mei_data_container['roi_id'] == roi_id) & (mei_data_container['seed'] == seed)
+        matching_rows = mei_data_container[query]
+        if len(matching_rows) != 1:
+            raise ValueError(f"MEI for roi_id {roi_id} and seed {seed} not found in mei_data_container.")
+    
+    # warn if duplicate
+
+    duplicates = [item for item in rois_seed if rois_seed.count(item) > 1]
+    if duplicates:
+        raise ValueError(f"Duplicate (roi_id, seed) pairs found in rois_seed: {set(duplicates)}")
     ################# decide on positioning and play sequence ##################
 
     ## 1) get the positions and their ordering
@@ -726,10 +712,6 @@ def create_single_mei_avis_and_metadata(
     log(f"Retrieved and saved MEIs with the following unique ids: {retrieved_mei_ids}.")
     print(f"Retrieved and saved MEIs with the following unique ids: {retrieved_mei_ids}.")
     
-
-    # check meis saved and passed to function
-    check_mei_ids_overlap(roi_id2mei_ids, retrieved_mei_ids)
-
     ## 4) save the metadata
     metadata_filename = os.path.join(abs_iteration_dir,"mei_metadata.yaml")
     create_metadata_file(reordered_rf_mean_x_um,

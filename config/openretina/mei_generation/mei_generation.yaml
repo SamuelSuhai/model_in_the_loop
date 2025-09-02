@@ -11,7 +11,15 @@ stimulus_range_constraints: {
     x_min_uv: -0.913,
     x_max_uv: 6.269,
 }
+temporal_gaussian_kwargs:
+    sigma: 0.5
+    kernel_size: 5
 
+spatial_gaussian_kwargs:
+    sigma: 0.35 
+    kernel_size: 5
+    reflect_pad: false
 
-min_testset_correl: 0.4 # at wat correl to include in mei analysis
 reconstruct_mei: true
+postprocessing_params:
+

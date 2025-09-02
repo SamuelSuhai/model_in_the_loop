@@ -5,13 +5,13 @@ from typing import Dict,Any,Protocol, List,Tuple
 import torch
 import logging
 import os
-import yaml
 import hydra
 from omegaconf import DictConfig, OmegaConf
-
+from openretina.insilico.stimulus_optimization.regularizer import StimulusPostprocessor,_gaussian_1d_kernel
+import torch.nn.functional as F
+import einops
 from openretina.models.core_readout import BaseCoreReadout
 from openretina.models.core_readout import load_core_readout_model
-from openretina.data_io.hoefling_2024.responses import filter_responses, make_final_responses
 from openretina.data_io.base import MoviesTrainTestSplit, ResponsesTrainTestSplit
 from openretina.utils.video_analysis import decompose_kernel
 
@@ -53,7 +53,7 @@ log = logging.getLogger(__name__)
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-
+FRAME_RATE_MODEL = 30.0  # Hz
 STIMULUS_SHAPE = (1, 2, 50, 18, 16)
 
 
@@ -70,6 +70,8 @@ class IncreaseObjectiveFourierBasis(AbstractObjective):
 
     def forward(self, stimulus: torch.Tensor) -> torch.Tensor:
         pass
+
+
 class IncreaseObjectiveSeparable(AbstractObjective):
     """
     ."""
@@ -100,6 +102,40 @@ class IncreaseObjectiveSeparable(AbstractObjective):
         single_score = self._response_reducer.forward(mean_response)
         return single_score
 
+class SpatialGaussianLowPassFilterProcessor(StimulusPostprocessor):
+    """
+    Separable spatial Gaussian LPF: 1D over H, then 1D over W.
+    Keeps channels depthwise and leaves time dimension unchanged.
+    Also keeps the norm unchanged.
+    """
+    def __init__(self, sigma: float, kernel_size: int, device: str = "cpu",reflect_pad =False):
+        k = _gaussian_1d_kernel(sigma, kernel_size).to(device)
+        self.kernel_h = k
+        self.kernel_w = k
+        self.reflect_pad = reflect_pad
+
+    def process(self, x: torch.Tensor) -> torch.Tensor:
+        # x: (B, C, T, H, W)
+        B, C, T, H, W = x.shape
+        dev = x.device
+
+        kh = einops.repeat(self.kernel_h.to(dev), "s -> c 1 1 s 1", c=C)  # (C,1,1,kh,1)
+        kw = einops.repeat(self.kernel_w.to(dev), "s -> c 1 1 1 s", c=C)  # (C,1,1,1,kw)
+        
+        if self.reflect_pad:
+            pad_h = self.kernel_h.numel() // 2
+            # pad tuple for 5D (N,C,D,H,W): (W_left, W_right, H_top, H_bottom, D_front, D_back)
+            x = F.pad(x, (0, 0, pad_h, pad_h, 0, 0), mode="reflect")
+            x = F.conv3d(x, kh, groups=C, padding=0)
+            pad_w = self.kernel_w.numel() // 2
+            x = F.pad(x, (pad_w, pad_w, 0, 0, 0, 0), mode="reflect")
+            x = F.conv3d(x, kw, groups=C, padding=0)
+        else:
+            # zero-padding “same”
+            x = F.conv3d(x, kh, groups=C, padding="same")
+            x = F.conv3d(x, kw, groups=C, padding="same")
+
+        return x
 
 
 def load_pretrained_model(checkpoint_path: str) -> BaseCoreReadout:
@@ -107,7 +143,7 @@ def load_pretrained_model(checkpoint_path: str) -> BaseCoreReadout:
     model = load_core_readout_model(checkpoint_path,device=DEVICE, is_gru_model=is_gru_model)
     return model
 
-def load_pretrained_ensemble_model(ckpt_dir: str,seeds: List[str],set_eval=True) -> List[BaseCoreReadout]:
+def load_pretrained_ensemble_model(ckpt_dir: str,seeds: List[str],set_eval=True) -> EnsembleModel:
     models = []
     for seed in seeds:
         ckpt_path = os.path.join(ckpt_dir, f"seed_{seed}.ckpt")
@@ -136,21 +172,33 @@ def get_seed_and_path(ckpt_dir: str) -> Dict[int,str]:
 def generate_optimization_components(stimulus_range_constraints: Dict[str, float],
                                      reducer_axis: int= 0,
                                      reducer_start: int = 10,
-                                     reducer_length: int = 10) -> Tuple[List[Any], ResponseReducer]:
+                                     reducer_length: int = 10,
+                                     temporal_gaussian_kwargs: Dict[str,float | int] | None= None,
+                                     spatial_gaussian_kwargs: Dict[str,Any] | None= None,) -> Tuple[List[Any], ResponseReducer]:
+    stimulus_postprocessor_list = []
+    if temporal_gaussian_kwargs is not None:
+        temp_sig = temporal_gaussian_kwargs["sigma"]
+        temp_kernel_size = int(temporal_gaussian_kwargs["kernel_size"])
+        stimulus_postprocessor_list.append(TemporalGaussianLowPassFilterProcessor(sigma=temp_sig,kernel_size=temp_kernel_size, device=DEVICE))
     
+    if spatial_gaussian_kwargs is not None:
+        spatial_sigma = spatial_gaussian_kwargs["sigma"]
+        spatial_kernel_size = int(spatial_gaussian_kwargs["kernel_size"])
+        reflect_pad = spatial_gaussian_kwargs["reflect_pad"]
+        stimulus_postprocessor_list.append(SpatialGaussianLowPassFilterProcessor(sigma=spatial_sigma,kernel_size=spatial_kernel_size, reflect_pad=reflect_pad,device=DEVICE))
     
-    stimulus_lowpass_filter = TemporalGaussianLowPassFilterProcessor(sigma=0.5, kernel_size=5, device=DEVICE)
-    stimulus_postprocessor = ChangeNormJointlyClipRangeSeparately(
-    min_max_values=[
-        (stimulus_range_constraints["x_min_green"], stimulus_range_constraints["x_max_green"]),
-        (stimulus_range_constraints["x_min_uv"], stimulus_range_constraints["x_max_uv"]),
-    ],
-    norm=stimulus_range_constraints["norm"],
-    )
+    stimulus_postprocessor_list.append(ChangeNormJointlyClipRangeSeparately(
+            min_max_values=[
+                (stimulus_range_constraints["x_min_green"], stimulus_range_constraints["x_max_green"]),
+                (stimulus_range_constraints["x_min_uv"], stimulus_range_constraints["x_max_uv"]),
+            ],
+            norm=stimulus_range_constraints["norm"],
+    ))
+
 
     response_reducer = SliceMeanReducer(axis=reducer_axis, start=reducer_start, length=reducer_length)
 
-    return [stimulus_postprocessor,stimulus_lowpass_filter], response_reducer
+    return stimulus_postprocessor_list, response_reducer
 
 
 def get_model_gaussian_scaled_means(model: BaseCoreReadout, session: str) -> torch.Tensor:
@@ -293,7 +341,13 @@ def generate_meis_with_n_random_seeds(
 
     if set_model_to_eval_mode:
         model.eval()
-        model.freeze()
+        if isinstance(model, EnsembleModel):
+            for member in model.members:
+                member.eval()
+                member.freeze()
+        else:
+            model.eval()
+            model.freeze()
     else:
         if not model.training:
             model.train()
@@ -304,6 +358,8 @@ def generate_meis_with_n_random_seeds(
         reducer_axis=0,
         reducer_start=mei_generation_params["reducer_start"],
         reducer_length=mei_generation_params["reducer_length"],
+        temporal_gaussian_kwargs=mei_generation_params["temporal_gaussian_kwargs"],
+        spatial_gaussian_kwargs=mei_generation_params["spatial_gaussian_kwargs"],
     )
     
     all_meis = {neuron_id: {} for neuron_id in neuron_ids_to_analyze}
@@ -411,7 +467,7 @@ def single_training_loop(dataloaders,cfg,data_info,log,load_model_path=None,seed
 #@time_it
 def train_model_online(cfg: DictConfig,
                        neuron_data_dict:Dict[str,ResponsesTrainTestSplit],
-                       movies_dict:Dict[str,MoviesTrainTestSplit] | MoviesTrainTestSplit) -> \
+                       movies_dict: MoviesTrainTestSplit) -> \
                        Tuple[EnsembleModel | BaseCoreReadout, Dict[int,float], Dict[int,str] | str]:
     
     log.info("Logging full config:")
@@ -428,8 +484,8 @@ def train_model_online(cfg: DictConfig,
 
   
     if cfg.check_stimuli_responses_match:
-        for session, neuron_data in neuron_data_dict.items():
-            neuron_data.check_matching_stimulus(movies_dict[session]) # type: ignore
+        for _, neuron_data in neuron_data_dict.items():
+            neuron_data.check_matching_stimulus(movies_dict)
 
     dataloaders = hydra.utils.instantiate( # dict[str, dict[str, DataLoader]]
         cfg.dataloader,
@@ -513,10 +569,7 @@ def get_single_neuron_test_correlations(dataloaders , model: BaseCoreReadout | E
     return neuron_correlations
         
 
-def preprocess_for_openretina(raw_neuron_data_dict:Dict[str,Dict[str,Any]],model_condigs) -> Dict[str,ResponsesTrainTestSplit]:
-    filt_neuron_data =  filter_responses(raw_neuron_data_dict, **model_condigs.quality_checks)
-    neuron_data_dict =  make_final_responses(filt_neuron_data,response_type="natural") 
-    return neuron_data_dict
+
 
 
 
