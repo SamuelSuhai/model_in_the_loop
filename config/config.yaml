@@ -4,7 +4,7 @@ defaults:
   - openretina/mei_generation: mei_generation
 
 data_subfolders:
-  day: 20250717
+  day: 20250903
   experiment: 1
 
 DJ:
@@ -15,9 +15,9 @@ DJ:
     animal_loc: 1
     region_loc: 2
     field_loc: 3
-    stimulus_loc: 4
+    stimulus_loc: 4 
     cond1_loc: 5
-    data_dir: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/klaudia_data_test  
+    data_dir: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/data/recordings/test_meis_1
 
   table_parameters:
     # for the DJ tables 
@@ -66,7 +66,7 @@ paths:
   home_directory: /gpfs01/euler/User/ssuhai
   dj_config_directory: datajoint 
   rgc_output_directory: datajoint/rgc_classifier # dir where classifier should be stored
-  recording_files_dir: /gpfs01/euler/data/Data/Suhai/test_data_klaudia # /gpfs01/euler/data/Data/Suhai/move_closed_loop_data_here #   
+  recording_files_dir: /gpfs01/euler/data/Data/Suhai/move_closed_loop_data_here # /gpfs01/euler/data/Data/Suhai/test_data_klaudia # 
   stimulus_output_dir: /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop
   dummy_ini_dir: data/dummy_ini/
 

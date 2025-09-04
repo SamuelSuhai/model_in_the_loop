@@ -2,6 +2,7 @@ import os
 import datajoint as dj
 import subprocess
 import pandas as pd
+import pickle
 import torch
 import warnings
 warnings.simplefilter("ignore", FutureWarning)
@@ -23,6 +24,7 @@ from .model_to_stimulus import (load_stimuli,
 
 from omegaconf import DictConfig, ListConfig
 from openretina.models.core_readout import BaseCoreReadout
+from openretina.modules.layers.ensemble import EnsembleModel
 from openretina.data_io.hoefling_2024.responses import filter_responses, make_final_responses
 
 
@@ -349,6 +351,9 @@ class DJTableHolder:
                 raise ValueError("field_key must be provided when target is 'field'")
             (self('Field')() & field_key).delete(safemode=safemode)
         
+        clear_roi_field_field(Presentation = self('Presentation')(),field_key=field_key,safemode=safemode)
+
+        
 
         
 
@@ -449,24 +454,7 @@ class Preprocessor:
         (self.dj_table_holder('PreprocessTraces')() & field_key).delete(safemode=safemode)
 
 
-        # rm roi dirs        # remove any roi masks saved in the directory
-        all_field_presentation_files = (self.dj_table_holder("Presentation")() & field_key).fetch("pres_data_file")
-        all_roi_mask_files = [to_roi_mask_file(file, roi_mask_dir="ROIs") for file in all_field_presentation_files]
-        if len(all_roi_mask_files) == 0:
-            print("No ROI mask files found to delete.")
-            return
-        # prompt user to confirm deletion
-        if safemode:
-            confirm = input(f"Are you sure you want to remove ROI maskfiles \n{"\n".join(all_roi_mask_files)} ROI mask files? (yes/no): ")
-            if confirm.lower() != 'yes':
-                print("Deletion cancelled.")
-                return
-        # remove all roi mask files
-        for file in all_roi_mask_files:
-            if os.path.exists(file):
-                os.remove(file)
-                print(f"Removed file: {file}")
-
+        clear_roi_field_field(Presentation = self.dj_table_holder('Presentation')(),field_key=field_key,safemode=safemode)
 #################################################### DJ Compute Wrappers ###############################################
 
 
@@ -942,7 +930,7 @@ class STAWrapper(DJComputeWrapper):
     def plot_roi_overview(self, roi_keys: List[Dict[str, Any]]) -> None:
         pass
         
-    def plot1(self,roi_id: int,field_key={},show = True) -> None:
+    def plot1(self,roi_id: int,field_key={},axs = None, show = True) -> None:
 
         restricted_split_rf = (self.dj_table_holder('SplitRF')() & field_key & {'roi_id': roi_id})
         if len(restricted_split_rf) == 0:
@@ -956,8 +944,9 @@ class STAWrapper(DJComputeWrapper):
 
         rf_time = restricted_split_rf.fetch1_rf_time(key=key)
         srf, trf, peak_idxs = (restricted_split_rf & key).fetch1("srf", "trf", "trf_peak_idxs")
-
-        fig, axs = plt.subplots(1, 2, figsize=(8, 3), sharex='col')
+        
+        if axs is None:
+            fig, axs = plt.subplots(1, 2, figsize=(8, 3), sharex='col')
 
         ax = axs[0]
         plot_utils.plot_srf(srf, ax=ax)
@@ -1028,7 +1017,9 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                            ax: plt.Axes, 
                            stimulus_shape: Tuple[int,...],
                            reducer_start: int,
-                           reducer_length: int,):
+                           reducer_length: int,
+                           y_axis_lim: Tuple[float,float] | None= None,
+                           ) -> None:
         """
         plots the reponses of one readout neuron to all meis of different seeds.
         The optimization window is highlighted in yellow.
@@ -1057,13 +1048,19 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
 
         x = np.arange(response_start + 1, respones_end + 1)
+        min_response,max_response = np.inf, -np.inf
         for i,(seed, seed_responses_all_idx) in enumerate(zip(seeds, responses_of_all_readout_idxs, strict=True)):
             target_idx_response = seed_responses_all_idx[:, readout_idx]
+            min_response = min(min_response, np.min(target_idx_response))
+            max_response = max(max_response, np.max(target_idx_response))
             ax.plot(x,target_idx_response, label=f"Seed {seed}", color=self.colors[i], linestyle='-' if seed % 2 == 0 else '--')
 
         ax.set_xlabel("Time (frames)")
         ax.set_xlim(stim_start, stim_end)
         ax.set_ylabel("Response", fontsize=6)
+        if y_axis_lim is None:
+            y_axis_lim = (min_response - 0.1 * abs(min_response), max_response + 0.1 * abs(max_response))
+        ax.set_ylim(y_axis_lim)
         
         # Highlight the optimization window
         ax.axvspan(opt_window_start , opt_window_end, color='yellow', alpha=0.3, label='Optimization Window')
@@ -1072,26 +1069,20 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
 
     def plot_temporal_kernels(self,
-                              readout_idx: int, 
+                              readout_idx: int,
+                              roi_id: int,
+                              seeds: List[int],
+                              temporal_kernels_list: List[np.ndarray],
                               axs: List[plt.Axes]) -> None:
         """
         Plots the temporal kernels for all seeds for a single neuron.
         Green is in axs[0], UV in axs[1]
         all seeds are plotted for each channel
         """
-        # fetch data, 
-        bool_mask_neuron_idx = self.mei_data_container["readout_idx"] == readout_idx
-        data_subset = self.mei_data_container[bool_mask_neuron_idx][["seed", "temporal_kernels","roi_id"]]
-        assert len(data_subset) <= len(self.seeds), f"Expected at most {len(self.seeds)} seeds for neuron idx {readout_idx}, found {len(data_subset)}"
-        assert len(data_subset["roi_id"].unique()) == 1, f"Expected exactly one roi_id for neuron idx {readout_idx}, found {data_subset["roi_id"].unique()}"
 
-        roi_id = data_subset["roi_id"].iloc[0]
-        
-        # seeds as a list
-        seeds = data_subset["seed"].tolist()
 
         # stack temporal_kernels into one array of shape (n_seeds, 2, timepoints)
-        temporal_kernels = np.stack(data_subset["temporal_kernels"].to_list(),axis=0)
+        temporal_kernels = np.stack(temporal_kernels_list,axis=0)
 
         # split channels
         green_temporal_kernels = temporal_kernels[:, 0, :]
@@ -1115,7 +1106,12 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         axs[0].legend(fontsize=6)
         axs[1].legend(fontsize=6)
 
-    def plot_spatial_kernels(self, readout_idx: int, ax: plt.Axes) -> None:
+    def plot_spatial_kernels(self, 
+                             readout_idx: int,
+                             roi_id: int,
+                             seeds: List[int],
+                             spatial_kernels_list: List[List[np.ndarray]], 
+                            ax: plt.Axes) -> None:
         """
         Written by AI: 
         Plots the spatial kernels in the following way:
@@ -1123,15 +1119,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         - Different seeds are stacked vertically
         - Small labels above each seed indicate the seed number
         """
-        # Fetch data for this neuron
-        bool_mask_neuron_idx = self.mei_data_container["readout_idx"] == readout_idx
-        data_subset = self.mei_data_container[bool_mask_neuron_idx][["seed", "spatial_kernels", "roi_id"]]
         
-        roi_id = data_subset["roi_id"].iloc[0]
-        seeds = data_subset["seed"].tolist()
-        
-        # Get all spatial kernels for this neuron (all seeds)
-        spatial_kernels_list = data_subset["spatial_kernels"].tolist()
         
         # Calculate total height needed for all seeds
         total_height = 0
@@ -1193,7 +1181,9 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
 
-    def plot1(self,roi_id: int, 
+    def plot1(self,
+              roi_id: int,
+              axs = None, 
               show = True) -> None:
 
         if roi_id not in self.roi2readout_idx_wmeis.keys():
@@ -1203,15 +1193,35 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         
         # find neuron_id for roi_id
         neuron_idx = self.roi2readout_idx_wmeis[roi_id]
+        if axs is None:
+            fig,axs = plt.subplots(2,2,figsize=(8, 8))
 
-        fig,axs = plt.subplots(2,2,figsize=(8, 8))
+        # subset the data
+        bool_mask_neuron_idx = self.mei_data_container["readout_idx"] == neuron_idx
+        data_subset = self.mei_data_container[bool_mask_neuron_idx][["seed", "temporal_kernels","spatial_kernels","roi_id"]]
+        assert len(data_subset) <= len(self.seeds), f"Expected at most {len(self.seeds)} seeds for neuron idx {neuron_idx}, found {len(data_subset)}"
+        assert len(data_subset["roi_id"].unique()) == 1, f"Expected exactly one roi_id for neuron idx {neuron_idx}, found {data_subset["roi_id"].unique()}"
+        roi_id = data_subset["roi_id"].iloc[0]
+        seeds = data_subset["seed"].tolist()
+        
+        # Get all spatial kernels for this neuron (all seeds)
+        spatial_kernels_list = data_subset["spatial_kernels"].tolist()
+        temporal_kernels_list = data_subset["temporal_kernels"].to_list()
 
         ## temporal kernels for seeds. 
         # ax[0,0] has green temp kernels for seeds ax[1,0] has uv temp kernels for seeds
-        self.plot_temporal_kernels(neuron_idx, axs=[axs[0,0],axs[1,0]])
+        self.plot_temporal_kernels(neuron_idx,
+                                   roi_id=roi_id,
+                                   seeds=seeds,
+                                   temporal_kernels_list=temporal_kernels_list,
+                                   axs=[axs[0,0],axs[1,0]])
 
         ## spatial kernels in ax[0,1]
-        self.plot_spatial_kernels(neuron_idx, ax=axs[0, 1])
+        self.plot_spatial_kernels(neuron_idx,
+                                  roi_id=roi_id,
+                                   seeds=seeds,
+                                    spatial_kernels_list=spatial_kernels_list,
+                                      ax=axs[0, 1])
 
         ## ax[1,1] has responses
         self.plot_seed_respones(neuron_idx, 
@@ -1360,7 +1370,94 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                         "model_chkpt_path": self.best_model_ckp
 
                     }
-                )        
+                )
+    def save_all_data_to_dir(self, save_dir: str) -> None:
+        
+        os.makedirs(save_dir, exist_ok=True)
+
+        # save raw session data
+        session_dict_raw_path = os.path.join(save_dir, "session_dict_raw.pkl")
+        with open(session_dict_raw_path, 'wb') as f:
+            pickle.dump(self.session_dict_raw, f)
+        print(f"Saved raw session dict to {session_dict_raw_path}")
+
+        # save mei data container
+        mei_data_container_path = os.path.join(save_dir, "mei_data_container.pkl")
+        with open(mei_data_container_path, 'wb') as f:
+            pickle.dump(self.mei_data_container, f)
+        print(f"Saved MEI data container to {mei_data_container_path}")
+
+        # save models
+        model_path_state_dict = os.path.join(save_dir, "model_state_dict.pt")
+        torch.save({
+            'model_state_dict': self.model.state_dict(),
+            # Optionally save other items like optimizer state
+        }, model_path_state_dict)
+        full_model_path = os.path.join(save_dir, "model_full.pt")
+        torch.save(self.model,full_model_path)
+        print(f"Saved model state dict to {model_path_state_dict}")
+        print(f"Saved full model to {full_model_path}")
+
+
+        # save metadata
+        metadata = {
+            "roi2readout_idx_wmeis": self.roi2readout_idx_wmeis,
+            "roi_ids2readout_idx": self.roi_ids2readout_idx,
+            "neuron_idxs_passing_filter": self.neuron_idxs_passing_filter,
+            "neuron_testset_correls": self.neuron_testset_correls,
+            "new_session_id": self.new_session_id,
+            "scaled_means_before_centering": self.scaled_means_before_centering,
+            
+        
+
+        }
+        metadata_path = os.path.join(save_dir, "metadata.pkl")
+        with open(metadata_path, 'wb') as f:
+            pickle.dump(metadata, f)
+        print(f"Saved metadata to {metadata_path}")
+    
+    def load_all_data_from_dir(self, load_dir: str) -> None:
+        """
+        does the opposite of save_all_data_to_dir
+        """
+        # load raw session data
+        session_dict_raw_path = os.path.join(load_dir, "session_dict_raw.pkl")
+        with open(session_dict_raw_path, 'rb') as f:
+            self.session_dict_raw = pickle.load(f)
+        print(f"Loaded raw session dict from {session_dict_raw_path}")
+
+        # load mei data container
+        mei_data_container_path = os.path.join(load_dir, "mei_data_container.pkl")
+        with open(mei_data_container_path, 'rb') as f:
+            self.mei_data_container = pickle.load(f)
+        print(f"Loaded MEI data container from {mei_data_container_path}")
+
+        # # load model
+        # model_path = os.path.join(load_dir, "model.pt")
+        # checkpoint = torch.load(model_path)
+        # self.model.load_state_dict(checkpoint['model_state_dict'])
+        # self.model.eval()
+        # print(f"Loaded model from {model_path}")
+
+        # load full model
+        full_model_path = os.path.join(load_dir, "model_full.pt")
+        self.model = torch.load(full_model_path)
+        self.model.eval()
+        print(f"Loaded full model from {full_model_path}")
+
+        # load metadata
+        metadata_path = os.path.join(load_dir, "metadata.pkl")
+        with open(metadata_path, 'rb') as f:
+            metadata = pickle.load(f)
+        self.roi2readout_idx_wmeis = metadata["roi2readout_idx_wmeis"]
+        self.roi_ids2readout_idx = metadata["roi_ids2readout_idx"]
+        self.neuron_idxs_passing_filter = metadata["neuron_idxs_passing_filter"]
+        self.neuron_testset_correls = metadata["neuron_testset_correls"]
+        self.new_session_id = metadata["new_session_id"]
+        self.scaled_means_before_centering = metadata["scaled_means_before_centering"]
+        print(f"Loaded metadata from {metadata_path}")
+
+
 
     def fetch_from_db(self, field_key: Dict[str, Any] = {}) -> None:
         """
@@ -1608,8 +1705,13 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
                         reconstruction = torch.tensor(reconstruction,dtype=torch.float32).to(device)
                         assert reconstruction.shape == mei.shape, "Reconstructed MEI shape does not match original MEI shape."
+                        
+                        # make reonstruction same norm as mei
+                        print(f"changing norm of reconstruction {torch.norm(reconstruction)} to match original mei norm {torch.norm(mei)}")
+                        reconstruction = reconstruction / torch.norm(reconstruction) * torch.norm(mei)
+                        print(f"new reconstruction norm {torch.norm(reconstruction)}")
                         mei = reconstruction # use the reconstructed MEI for further analysis
-
+                        print(f"Done reconstructing MEI for neuron (readout idx) {neuron_id}, seed {seed}.")
                         # add entry to data container 
                         mei_data_container_entries.append({
                             "readout_idx": neuron_id,
@@ -1757,3 +1859,62 @@ def get_rois_in_field_restriction_str(field_key: Dict[str, Any],roi_id_subset:Op
         complete_restriction =  complete_restriction + " AND " + roi_restriction_string
 
     return complete_restriction
+
+
+
+
+    # no gui:
+def show_all_rois_plot(dj_table_holder,wrapper,field_key):
+
+
+    # different way of getting rois for different wrappers
+    if wrapper.name == "Random Seed MEI":
+        rois = wrapper.mei_data_container["roi_id"].unique()
+
+        # we have 4 col per row 
+        n_rows = len(rois)
+        n_cols = 4
+        fig,axs = plt.subplots(n_rows,n_cols,figsize=(n_cols*5,n_rows*5))
+        for row_idx,roi_id in enumerate(rois):
+            axes_reshpaped = axs[row_idx,:].reshape(2,2)
+            wrapper.plot1(roi_id=roi_id,axs=axes_reshpaped,show=False)
+    
+    elif wrapper.name == "STA":
+        rois = (dj_table_holder("STA")() & field_key).proj().fetch("roi_id")
+        n_rois = len(rois)
+        n_cols = 2
+        n_rows = n_rois
+        fig, axs = plt.subplots(n_rows, n_cols, figsize=(n_cols * 5, n_rows * 5))
+        for i, roi_id in enumerate(rois):
+            wrapper.plot1( roi_id=roi_id, axs=[axs[i,0],axs[i,1]],show=False)
+    else:
+        raise ValueError("Wrapper type not supported for show_all_rois_plot")
+
+
+    
+    return fig, axs
+
+
+
+
+
+
+def clear_roi_field_field(Presentation, field_key: Dict[str, Any], safemode: bool = True) -> None:
+    # rm roi dirs        
+    # # remove any roi masks saved in the directory
+    all_field_presentation_files = (Presentation & field_key).fetch("pres_data_file")
+    all_roi_mask_files = [to_roi_mask_file(file, roi_mask_dir="ROIs") for file in all_field_presentation_files]
+    if len(all_roi_mask_files) == 0:
+        print("No ROI mask files found to delete.")
+        return
+    # prompt user to confirm deletion
+    if safemode:
+        confirm = input(f"Are you sure you want to remove ROI maskfiles \n{"\n".join(all_roi_mask_files)} ROI mask files? (yes/no): ")
+        if confirm.lower() != 'yes':
+            print("Deletion cancelled.")
+            return
+    # remove all roi mask files
+    for file in all_roi_mask_files:
+        if os.path.exists(file):
+            os.remove(file)
+            print(f"Removed file: {file}")

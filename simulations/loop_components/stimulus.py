@@ -2,7 +2,7 @@ import torch
 from typing import List, Tuple,Dict,Optional, Any
 import numpy as np
 import pandas as pd
-
+import datetime
 import cv2
 import os
 import yaml
@@ -532,7 +532,7 @@ def retrieve_meis_and_save_as_avis(rois_seed: List[Tuple[int,int]],
         full_mei_stim = torch.cat((bsl_tensor, mei), dim=1)
     
         # create avi from stim tensor
-        avi_filename = f"mei_{key}.avi"
+        avi_filename = f"{key}.avi"
         avi_full_path = os.path.join(stimulus_directory, avi_filename)
         print(f"Creating MEI avi file for {key} at {avi_full_path}.")
         create_avi_from_tensor(full_mei_stim, avi_full_path)
@@ -545,8 +545,11 @@ def generate_mei_ordering(roi_id2mei_ids: Dict[int,List[str]],reordered_roi_ids:
     roi_ids2meis_ids: Dict[int,List[str]] -> the mapping from roi id to the mei_ids we want to show that roi
     reordered_roi_ids: the chronological order of the roi_ids we want to stimulate. 
 
-    Does 2 things, each entry of the roi_ids2mei_ids is shuffled randomly, 
+    Does 2 things, each entry ROI it look in  roi_ids2mei_ids for its mei_ids and these are  shuffled randomly, 
     and then mei_ids are returned accroding to the roi_order from reordered_roi_ids.
+    
+    NOTE: roi_id2mei_ids can contain more roi_ids than selected by the user and thus in reordered_roi_ids.
+    THESE WILL THEN NOT BE USED
     """
     np.random.seed(seed)
 
@@ -569,10 +572,7 @@ def create_metadata_file(reordered_rf_mean_x_um: List[float],
     """
     Stored metadata in a dict and saves it as a yaml file.
     """
-    
-    # some checks
-    assert len(mei_presentation_ordering[0]) == len(reordered_roi_ids) == len(reordered_rf_mean_x_um) == len(reordered_rf_mean_y_um), "Length of mei_presentation_ordering sublists, reordered_roi_ids, reordered_rf_mean_x_um and reordered_rf_mean_y_um must be the same"
-    
+        
     # save positions, roi_ids, mei_ids to be presented
     metadata = {"positions": [],
                 "roi_ids": [],
@@ -587,44 +587,20 @@ def create_metadata_file(reordered_rf_mean_x_um: List[float],
     with open(full_file_path, 'w') as file:
         yaml.dump(metadata, file)
 
-def get_next_iteration_dir_from_remote(stimulus_output_dir: str,iteration_dir_name_base = "iter") -> Tuple[int,str]:
+def check_mei_presentation_ordering(mei_presentation_ordering,reordered_roi_ids) -> None:
     """
-    Given directory looks in dir to see other dirs containing iteration_dir_name_base 
-    and returns the next iteration number, which is last in the folder name.
+    Sanity check that the mei_presentation_ordering is correct.
+    WHAT WE WANT: 
+    mei_presetnation_ordering is a list of sublists. Each list corresponds to a ROI in the reordered_roi_ids (same order!!!)
+    Each sublist contains the mei_ids to be presented for that roi, so they should have same length.
+    """
+    if len(mei_presentation_ordering) != len(reordered_roi_ids):
+        raise ValueError("Length of mei_presentation_ordering does not match length of reordered_roi_ids.")
     
-    Args:
-        stimulus_output_dir: The directory to search in
-        iteration_dir_name_base: The base name to look for in subdirectory names
-        
-    Returns:
-        The next iteration number (max existing + 1, or 0 if none found)
-    """    
-
-    # Get all subdirectories in the stimulus_output_dir
-    all_subdirs = [d for d in os.listdir(stimulus_output_dir) 
-                  if os.path.isdir(os.path.join(stimulus_output_dir, d))]
-    
-    # Find subdirectories that match the pattern: base_name followed by a number
-    iteration_numbers = []
-    
-    for subdir in all_subdirs:
-        if iteration_dir_name_base in subdir:
-            possible_nr = subdir[-1]
-            try:
-                iteration_number = int(possible_nr)
-                iteration_numbers.append(iteration_number)
-            except ValueError:
-                continue       
-    
-    # If no matching directories found, return 0 as the first iteration
-    if not iteration_numbers:
-        next_iteation = 0
-    else:
-        # Return the next iteration number
-        next_iteation = max(iteration_numbers) + 1
-    next_dir = os.path.join(stimulus_output_dir, f"{iteration_dir_name_base}{next_iteation}")
-    return next_iteation,next_dir
-
+    # all sublists same length
+    sublist_lengths = [len(sublist) for sublist in mei_presentation_ordering]
+    if len(set(sublist_lengths)) != 1:
+        raise ValueError("Not all sublists in mei_presentation_ordering have the same length.")
 
 
 
@@ -654,7 +630,7 @@ def create_single_mei_avis_and_metadata(
         query = (mei_data_container['roi_id'] == roi_id) & (mei_data_container['seed'] == seed)
         matching_rows = mei_data_container[query]
         if len(matching_rows) != 1:
-            raise ValueError(f"MEI for roi_id {roi_id} and seed {seed} not found in mei_data_container.")
+            raise ValueError(f"MEI for roi_id {roi_id} and seed {seed} passed by user not found in mei_data_container.")
     
     # warn if duplicate
 
@@ -677,7 +653,7 @@ def create_single_mei_avis_and_metadata(
     presentation_ordering_idx = generate_presentation_location_order(rf_mean_x_um,
                                                                     rf_mean_y_um,
                                                                     )
-    reordered_roi_ids = [initial_roi_id_order[i] for i in presentation_ordering_idx]
+    reordered_roi_ids: List[int] = [initial_roi_id_order[i] for i in presentation_ordering_idx]
     reordered_rf_mean_x_um = [rf_mean_x_um[i] for i in presentation_ordering_idx]
     reordered_rf_mean_y_um = [rf_mean_y_um[i] for i in presentation_ordering_idx]
 
@@ -690,22 +666,25 @@ def create_single_mei_avis_and_metadata(
         reordered_roi_ids=reordered_roi_ids,
         seed=42,
     )
+
+    check_mei_presentation_ordering(mei_presentation_ordering, reordered_roi_ids)
     log(f"Generated MEI presentation ordering: {mei_presentation_ordering}.")   
     print(f"Generated MEI presentation ordering: {mei_presentation_ordering}.") 
 
 
     ################# file saving ##################
 
-    # new file for iteration 
-    iter_nr, abs_iteration_dir = get_next_iteration_dir_from_remote(
-        stimulus_output_dir=abs_save_dir)
-    os.makedirs(abs_iteration_dir, exist_ok=True)
+    # create new folder for stimuli 
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    new_dir = os.path.join(abs_save_dir,timestamp)
+   
+    os.makedirs(new_dir, exist_ok=True)
 
     # 3)  retrieve meis and save as avis
     retrieved_mei_ids = retrieve_meis_and_save_as_avis(
         rois_seed=rois_seed,
         mei_data_container=mei_data_container,
-        stimulus_directory=abs_iteration_dir,
+        stimulus_directory=new_dir,
         mei_sd_scale_factor=mei_sd_scale_factor,
         n_bsl_fames_before_mei=40,
     )
@@ -713,7 +692,7 @@ def create_single_mei_avis_and_metadata(
     print(f"Retrieved and saved MEIs with the following unique ids: {retrieved_mei_ids}.")
     
     ## 4) save the metadata
-    metadata_filename = os.path.join(abs_iteration_dir,"mei_metadata.yaml")
+    metadata_filename = os.path.join(new_dir,"metadata.yaml")
     create_metadata_file(reordered_rf_mean_x_um,
                          reordered_rf_mean_y_um,
                          reordered_roi_ids,

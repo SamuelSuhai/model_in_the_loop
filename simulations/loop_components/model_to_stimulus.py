@@ -222,7 +222,10 @@ def generate_mei(model: BaseCoreReadout | EnsembleModel,
         model = model.to(DEVICE)
 
     stimulus = torch.randn(stimulus_shape, requires_grad=True, device=DEVICE)
-    stimulus.data = stimulus.data * 0.1
+
+    # scale and clip data once TODO: make this more elegants
+    clipper = [processor for processor in stimulus_postprocessor_list if isinstance(processor, ChangeNormJointlyClipRangeSeparately)][0]
+    stimulus.data = clipper.process(stimulus.data * 0.1)
     objective = IncreaseObjective(
         model, neuron_indices=neuron_id, data_key=new_session_id, response_reducer=response_reducer
     )
