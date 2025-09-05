@@ -91,8 +91,8 @@ class DJTableHolder:
         Import and load all database tables
         """
         
-
-        from djimaging.user.ssuhai.schemas.ssuhai_schema_closed_loop import (
+        
+        from model_in_the_loop.core.dj_schemas.full_mitl_schema import (
                 UserInfo, Experiment, OpticDisk,RelativeFieldLocation, RelativeRoiLocation,
                 Field, Stimulus, RoiMask, Roi, Traces,
                 Presentation, RawDataParams, PreprocessParams, PreprocessTraces,
