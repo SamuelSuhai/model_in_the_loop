@@ -1,0 +1,86 @@
+[2025-06-05 19:38:17,744][datajoint][INFO] - Connecting ssuhai@172.25.240.200:3306
+[2025-06-05 19:38:17,807][datajoint][INFO] - Connected ssuhai@172.25.240.200:3306
+[2025-06-05 19:38:30,888][datajoint][INFO] - Deleting 3 rows from `ageuler_ssuhai_closed_loop`.`__field__stack_averages`
+[2025-06-05 19:38:30,967][datajoint][INFO] - Deleting 4 rows from `ageuler_ssuhai_closed_loop`.`__presentation__scan_info`
+[2025-06-05 19:38:31,018][datajoint][INFO] - Deleting 12 rows from `ageuler_ssuhai_closed_loop`.`__presentation__stack_averages`
+[2025-06-05 19:38:31,211][datajoint][INFO] - Deleting 107 rows from `ageuler_ssuhai_closed_loop`.`__celltype_assignment`
+[2025-06-05 19:38:31,247][datajoint][INFO] - Deleting 107 rows from `ageuler_ssuhai_closed_loop`.`__baden16_traces`
+[2025-06-05 19:38:31,310][datajoint][INFO] - Deleting 214 rows from `ageuler_ssuhai_closed_loop`.`__averages`
+[2025-06-05 19:38:31,358][datajoint][INFO] - Deleting 107 rows from `ageuler_ssuhai_closed_loop`.`__chirp_q_i`
+[2025-06-05 19:38:31,431][datajoint][INFO] - Deleting 107 rows from `ageuler_ssuhai_closed_loop`.`__os_ds_indexes`
+[2025-06-05 19:38:31,471][datajoint][INFO] - Deleting 214 rows from `ageuler_ssuhai_closed_loop`.`__snippets`
+[2025-06-05 19:38:31,607][datajoint][INFO] - Deleting 107 rows from `ageuler_ssuhai_closed_loop`.`__s_t_a__data_set`
+[2025-06-05 19:38:31,646][datajoint][INFO] - Deleting 107 rows from `ageuler_ssuhai_closed_loop`.`__s_t_a`
+[2025-06-05 19:38:31,684][datajoint][INFO] - Deleting 107 rows from `ageuler_ssuhai_closed_loop`.`__d_noise_trace`
+[2025-06-05 19:38:31,736][datajoint][INFO] - Deleting 428 rows from `ageuler_ssuhai_closed_loop`.`__preprocess_traces`
+[2025-06-05 19:38:31,826][datajoint][INFO] - Deleting 107 rows from `ageuler_ssuhai_closed_loop`.`__cascade_spikes`
+[2025-06-05 19:38:31,859][datajoint][INFO] - Deleting 107 rows from `ageuler_ssuhai_closed_loop`.`__cascade_traces`
+[2025-06-05 19:38:31,914][datajoint][INFO] - Deleting 428 rows from `ageuler_ssuhai_closed_loop`.`__traces`
+[2025-06-05 19:38:31,960][datajoint][INFO] - Deleting 4 rows from `ageuler_ssuhai_closed_loop`.`roi_mask__roi_mask_presentation`
+[2025-06-05 19:38:32,048][datajoint][INFO] - Deleting 107 rows from `ageuler_ssuhai_closed_loop`.`__roi`
+[2025-06-05 19:38:32,074][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`roi_mask`
+[2025-06-05 19:38:32,102][datajoint][INFO] - Deleting 4 rows from `ageuler_ssuhai_closed_loop`.`__presentation`
+[2025-06-05 19:38:32,151][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__relative_field_location`
+[2025-06-05 19:38:32,200][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`open_retina_hoefling_format`
+[2025-06-05 19:38:32,225][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__field`
+[2025-06-05 19:38:32,269][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__optic_disk`
+[2025-06-05 19:38:32,303][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`#raw_data_params`
+[2025-06-05 19:38:32,367][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__experiment__animal`
+[2025-06-05 19:38:32,417][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__experiment__exp_info`
+[2025-06-05 19:38:32,465][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__experiment__indicator`
+[2025-06-05 19:38:32,512][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__experiment__pharm_info`
+[2025-06-05 19:38:32,538][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__experiment`
+[2025-06-05 19:38:32,564][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`user_info`
+[2025-06-05 19:38:37,446][datajoint][INFO] - Deletes committed.
+[2025-06-05 19:38:38,475][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__experiment`
+[2025-06-05 19:38:38,476][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:38:39,506][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__field`
+[2025-06-05 19:38:39,507][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:38:40,555][datajoint][INFO] - Deleting 6 rows from `ageuler_ssuhai_closed_loop`.`#preprocess_params`
+[2025-06-05 19:38:40,600][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`#cascade_trace_params`
+[2025-06-05 19:38:40,645][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`#d_noise_trace_params`
+[2025-06-05 19:38:40,671][datajoint][INFO] - Deleting 6 rows from `ageuler_ssuhai_closed_loop`.`stimulus`
+[2025-06-05 19:38:45,079][datajoint][INFO] - Deletes committed.
+[2025-06-05 19:38:46,108][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`#raw_data_params`
+[2025-06-05 19:38:46,109][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:38:47,138][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`#preprocess_params`
+[2025-06-05 19:38:47,139][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:38:48,168][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__snippets`
+[2025-06-05 19:38:48,169][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:38:49,198][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__averages`
+[2025-06-05 19:38:49,199][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:38:50,228][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__chirp_q_i`
+[2025-06-05 19:38:50,228][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:38:51,258][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__os_ds_indexes`
+[2025-06-05 19:38:51,259][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:38:52,308][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__classifier`
+[2025-06-05 19:38:52,334][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`#classifier_method`
+[2025-06-05 19:38:55,647][datajoint][INFO] - Deletes committed.
+[2025-06-05 19:38:56,677][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`classifier_training_data`
+[2025-06-05 19:38:58,707][datajoint][INFO] - Deletes committed.
+[2025-06-05 19:38:59,735][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__classifier`
+[2025-06-05 19:38:59,736][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:39:00,766][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`#cascade_trace_params`
+[2025-06-05 19:39:00,766][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:39:01,796][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`#cascade_params`
+[2025-06-05 19:39:03,244][datajoint][INFO] - Deletes committed.
+[2025-06-05 19:39:04,272][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__baden16_traces`
+[2025-06-05 19:39:04,273][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:39:05,302][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__celltype_assignment`
+[2025-06-05 19:39:05,303][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:39:06,333][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`roi_mask`
+[2025-06-05 19:39:06,333][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:39:07,363][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__roi`
+[2025-06-05 19:39:07,363][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:39:08,393][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__traces`
+[2025-06-05 19:39:08,394][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:39:09,424][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__preprocess_traces`
+[2025-06-05 19:39:09,424][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:39:10,451][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__presentation`
+[2025-06-05 19:39:10,451][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:39:11,480][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__cascade_traces`
+[2025-06-05 19:39:11,480][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:39:12,510][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__cascade_spikes`
+[2025-06-05 19:39:12,511][datajoint][WARNING] - Nothing to delete.
+[2025-06-05 19:39:13,541][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`open_retina_hoefling_format`
+[2025-06-05 19:39:13,541][datajoint][WARNING] - Nothing to delete.

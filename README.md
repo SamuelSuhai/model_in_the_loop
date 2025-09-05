@@ -1,2 +1,6 @@
-# simulation_closed_loop
-To simulate aspects of the closed loop setup to be implemented.
+# Installation
+## Get dj_imaging
+## Get open-retina
+## modify paths in config 
+- DJ.data_dir
+- 

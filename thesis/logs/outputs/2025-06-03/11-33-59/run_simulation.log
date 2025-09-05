@@ -1,0 +1,6 @@
+[2025-06-03 11:34:04,192][datajoint][INFO] - Connecting ssuhai@172.25.240.200:3306
+[2025-06-03 11:34:04,258][datajoint][INFO] - Connected ssuhai@172.25.240.200:3306
+[2025-06-03 11:35:17,447][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`open_retina_hoefling_format`
+[2025-06-03 11:35:17,451][datajoint][WARNING] - Nothing to delete.
+[2025-06-03 11:41:52,919][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`open_retina_hoefling_format`
+[2025-06-03 11:42:03,083][datajoint][INFO] - Deletes committed.

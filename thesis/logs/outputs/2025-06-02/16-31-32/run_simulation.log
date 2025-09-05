@@ -1,0 +1,5 @@
+[2025-06-02 16:31:41,182][datajoint][INFO] - Connecting ssuhai@172.25.240.200:3306
+[2025-06-02 16:31:41,244][datajoint][INFO] - Connected ssuhai@172.25.240.200:3306
+[2025-06-02 16:35:07,482][datajoint][INFO] - Deleting 6 rows from `ageuler_ssuhai_closed_loop`.`#cascade_trace_params`
+[2025-06-02 16:35:07,519][datajoint][INFO] - Deleting 6 rows from `ageuler_ssuhai_closed_loop`.`#preprocess_params`
+[2025-06-02 16:35:07,543][datajoint][INFO] - Deleting 6 rows from `ageuler_ssuhai_closed_loop`.`stimulus`

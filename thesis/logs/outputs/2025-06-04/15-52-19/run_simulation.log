@@ -1,0 +1,64 @@
+[2025-06-04 15:52:20,377][datajoint][INFO] - Connecting ssuhai@172.25.240.200:3306
+[2025-06-04 15:52:20,437][datajoint][INFO] - Connected ssuhai@172.25.240.200:3306
+[2025-06-04 15:56:28,745][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:28,750][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:28,900][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:28,903][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:29,034][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:29,037][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:29,158][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:29,161][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:29,295][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:29,298][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:32,039][tensorflow][WARNING] - 5 out of the last 5 calls to <function TensorFlowTrainer.make_predict_function.<locals>.one_step_on_data_distributed at 0x7f0697ca6d40> triggered tf.function retracing. Tracing is expensive and the excessive number of tracings could be due to (1) creating @tf.function repeatedly in a loop, (2) passing tensors with different shapes, (3) passing Python objects instead of tensors. For (1), please define your @tf.function outside of the loop. For (2), @tf.function has reduce_retracing=True option that can avoid unnecessary retracing. For (3), please refer to https://www.tensorflow.org/guide/function#controlling_retracing and https://www.tensorflow.org/api_docs/python/tf/function for  more details.
+[2025-06-04 15:56:32,176][tensorflow][WARNING] - 6 out of the last 6 calls to <function TensorFlowTrainer.make_predict_function.<locals>.one_step_on_data_distributed at 0x7f0697ca6d40> triggered tf.function retracing. Tracing is expensive and the excessive number of tracings could be due to (1) creating @tf.function repeatedly in a loop, (2) passing tensors with different shapes, (3) passing Python objects instead of tensors. For (1), please define your @tf.function outside of the loop. For (2), @tf.function has reduce_retracing=True option that can avoid unnecessary retracing. For (3), please refer to https://www.tensorflow.org/guide/function#controlling_retracing and https://www.tensorflow.org/api_docs/python/tf/function for  more details.
+[2025-06-04 15:56:33,724][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:33,728][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:33,883][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:33,886][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:34,017][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:34,019][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:34,176][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:34,179][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:34,347][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:34,350][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:37,137][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:37,141][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:37,270][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:37,273][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:37,458][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:37,462][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:37,597][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:37,600][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:37,744][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:37,747][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:41,272][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:41,276][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:41,458][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:41,461][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:41,603][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:41,606][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:41,743][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:41,746][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:41,906][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:41,909][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:45,708][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:45,712][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:45,841][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:45,845][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:45,993][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:45,996][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:46,139][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:46,142][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:46,297][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:46,300][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:50,085][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:50,090][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:50,254][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:50,257][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:50,419][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:50,422][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:50,569][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:50,572][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 15:56:50,712][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 15:56:50,715][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.

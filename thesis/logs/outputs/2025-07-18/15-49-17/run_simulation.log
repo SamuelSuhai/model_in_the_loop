@@ -1,0 +1,4 @@
+[2025-07-18 15:49:42,259][datajoint][INFO] - Connecting ssuhai@172.25.240.200:3306
+[2025-07-18 15:49:42,315][datajoint][INFO] - Connected ssuhai@172.25.240.200:3306
+[2025-07-18 15:50:42,982][datajoint][INFO] - Deleting 89 rows from `ageuler_ssuhai_closed_loop`.`__d_noise_trace`
+[2025-07-18 15:51:10,592][datajoint][INFO] - Deletes committed.

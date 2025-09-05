@@ -1,0 +1,11 @@
+preprocessors:
+  source_dir: ${hydra:runtime.cwd}/data/recordings/static_test_data
+  source_exp_dir: '1'
+  source_smp_file: M1_LR_GCL0_Chirp.smp
+  source_smh_file: M1_LR_GCL0_Chirp.smh
+  source_stim_file: SMP_M1_LR_GCL0_Chirp.h5
+  ini_file: 20190701__left.ini
+  target_dir: ${hydra:runtime.cwd}/data/recordings/updated_loop_data/20250412
+models: {}
+recorders: {}
+stimulators: {}

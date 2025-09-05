@@ -1,0 +1,208 @@
+[2025-06-04 11:57:39,738][datajoint][INFO] - Connecting ssuhai@172.25.240.200:3306
+[2025-06-04 11:57:39,799][datajoint][INFO] - Connected ssuhai@172.25.240.200:3306
+[2025-06-04 11:57:52,326][datajoint][INFO] - Deleting 3 rows from `ageuler_ssuhai_closed_loop`.`__field__stack_averages`
+[2025-06-04 11:57:52,398][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__presentation__scan_info`
+[2025-06-04 11:57:52,446][datajoint][INFO] - Deleting 3 rows from `ageuler_ssuhai_closed_loop`.`__presentation__stack_averages`
+[2025-06-04 11:57:52,526][datajoint][INFO] - Deleting 105 rows from `ageuler_ssuhai_closed_loop`.`__preprocess_traces`
+[2025-06-04 11:57:52,559][datajoint][INFO] - Deleting 105 rows from `ageuler_ssuhai_closed_loop`.`__traces`
+[2025-06-04 11:57:52,607][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`roi_mask__roi_mask_presentation`
+[2025-06-04 11:57:52,686][datajoint][INFO] - Deleting 105 rows from `ageuler_ssuhai_closed_loop`.`__roi`
+[2025-06-04 11:57:52,711][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`roi_mask`
+[2025-06-04 11:57:52,736][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__presentation`
+[2025-06-04 11:57:52,759][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__field`
+[2025-06-04 11:57:52,786][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`#raw_data_params`
+[2025-06-04 11:57:52,845][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__experiment__animal`
+[2025-06-04 11:57:52,891][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__experiment__exp_info`
+[2025-06-04 11:57:52,936][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__experiment__indicator`
+[2025-06-04 11:57:52,985][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__experiment__pharm_info`
+[2025-06-04 11:57:53,010][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__experiment`
+[2025-06-04 11:57:53,035][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`user_info`
+[2025-06-04 11:57:56,981][datajoint][INFO] - Deletes committed.
+[2025-06-04 11:57:58,008][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__experiment`
+[2025-06-04 11:57:58,009][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 11:57:59,037][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__field`
+[2025-06-04 11:57:59,038][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 11:58:00,085][datajoint][INFO] - Deleting 6 rows from `ageuler_ssuhai_closed_loop`.`#preprocess_params`
+[2025-06-04 11:58:00,129][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`#cascade_trace_params`
+[2025-06-04 11:58:00,154][datajoint][INFO] - Deleting 6 rows from `ageuler_ssuhai_closed_loop`.`stimulus`
+[2025-06-04 11:58:07,501][datajoint][INFO] - Deletes committed.
+[2025-06-04 11:58:08,528][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`#raw_data_params`
+[2025-06-04 11:58:08,528][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 11:58:09,556][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`#preprocess_params`
+[2025-06-04 11:58:09,556][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 11:58:10,584][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__snippets`
+[2025-06-04 11:58:10,584][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 11:58:11,611][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__averages`
+[2025-06-04 11:58:11,611][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 11:58:12,640][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__chirp_q_i`
+[2025-06-04 11:58:12,640][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 11:58:13,669][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__os_ds_indexes`
+[2025-06-04 11:58:13,669][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 11:58:14,715][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__classifier`
+[2025-06-04 11:58:14,740][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`#classifier_method`
+[2025-06-04 11:58:29,206][datajoint][INFO] - Deletes committed.
+[2025-06-04 11:58:30,233][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`classifier_training_data`
+[2025-06-04 11:58:49,178][datajoint][INFO] - Deletes committed.
+[2025-06-04 11:58:50,205][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__classifier`
+[2025-06-04 11:58:50,205][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 11:58:51,232][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`#cascade_trace_params`
+[2025-06-04 11:58:51,232][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 11:58:52,260][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`#cascade_params`
+[2025-06-04 12:00:12,115][datajoint][INFO] - Deletes committed.
+[2025-06-04 12:00:13,144][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__baden16_traces`
+[2025-06-04 12:00:13,145][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:00:14,174][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__celltype_assignment`
+[2025-06-04 12:00:14,175][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:00:15,205][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`roi_mask`
+[2025-06-04 12:00:15,205][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:00:16,235][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__roi`
+[2025-06-04 12:00:16,235][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:00:17,265][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__traces`
+[2025-06-04 12:00:17,265][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:00:18,295][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__preprocess_traces`
+[2025-06-04 12:00:18,295][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:00:19,325][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__presentation`
+[2025-06-04 12:00:19,326][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:00:20,355][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__cascade_traces`
+[2025-06-04 12:00:20,356][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:00:21,386][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__cascade_spikes`
+[2025-06-04 12:00:21,386][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:00:22,416][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`open_retina_hoefling_format`
+[2025-06-04 12:00:22,416][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:16:13,405][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:13,409][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:13,502][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:13,504][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:13,596][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:13,598][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:13,733][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:13,735][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:13,857][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:13,859][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:16,869][tensorflow][WARNING] - 5 out of the last 5 calls to <function TensorFlowTrainer.make_predict_function.<locals>.one_step_on_data_distributed at 0x7fc3e9338860> triggered tf.function retracing. Tracing is expensive and the excessive number of tracings could be due to (1) creating @tf.function repeatedly in a loop, (2) passing tensors with different shapes, (3) passing Python objects instead of tensors. For (1), please define your @tf.function outside of the loop. For (2), @tf.function has reduce_retracing=True option that can avoid unnecessary retracing. For (3), please refer to https://www.tensorflow.org/guide/function#controlling_retracing and https://www.tensorflow.org/api_docs/python/tf/function for  more details.
+[2025-06-04 12:16:16,957][tensorflow][WARNING] - 6 out of the last 6 calls to <function TensorFlowTrainer.make_predict_function.<locals>.one_step_on_data_distributed at 0x7fc3e9338860> triggered tf.function retracing. Tracing is expensive and the excessive number of tracings could be due to (1) creating @tf.function repeatedly in a loop, (2) passing tensors with different shapes, (3) passing Python objects instead of tensors. For (1), please define your @tf.function outside of the loop. For (2), @tf.function has reduce_retracing=True option that can avoid unnecessary retracing. For (3), please refer to https://www.tensorflow.org/guide/function#controlling_retracing and https://www.tensorflow.org/api_docs/python/tf/function for  more details.
+[2025-06-04 12:16:18,333][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:18,336][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:18,425][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:18,427][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:18,525][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:18,527][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:18,621][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:18,623][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:18,725][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:18,726][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:20,773][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:20,776][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:20,876][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:20,878][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:21,002][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:21,004][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:21,093][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:21,095][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:21,196][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:21,198][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:23,921][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:23,924][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:24,013][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:24,015][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:24,100][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:24,102][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:24,212][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:24,214][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:24,322][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:24,324][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:27,247][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:27,250][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:27,340][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:27,342][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:27,457][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:27,459][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:27,553][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:27,555][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:27,680][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:27,682][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:31,033][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:31,036][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:31,130][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:31,131][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:31,258][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:31,260][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:31,345][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:31,347][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:16:31,466][absl][WARNING] - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+[2025-06-04 12:16:31,467][absl][WARNING] - Error in loading the saved optimizer state. As a result, your model is starting with a freshly initialized optimizer.
+[2025-06-04 12:31:38,873][datajoint][INFO] - Deleting 12 rows from `ageuler_ssuhai_closed_loop`.`__field__stack_averages`
+[2025-06-04 12:31:38,951][datajoint][INFO] - Deleting 4 rows from `ageuler_ssuhai_closed_loop`.`__presentation__scan_info`
+[2025-06-04 12:31:39,001][datajoint][INFO] - Deleting 12 rows from `ageuler_ssuhai_closed_loop`.`__presentation__stack_averages`
+[2025-06-04 12:31:39,175][datajoint][INFO] - Deleting 214 rows from `ageuler_ssuhai_closed_loop`.`__averages`
+[2025-06-04 12:31:39,225][datajoint][INFO] - Deleting 107 rows from `ageuler_ssuhai_closed_loop`.`__chirp_q_i`
+[2025-06-04 12:31:39,294][datajoint][INFO] - Deleting 107 rows from `ageuler_ssuhai_closed_loop`.`__os_ds_indexes`
+[2025-06-04 12:31:39,336][datajoint][INFO] - Deleting 214 rows from `ageuler_ssuhai_closed_loop`.`__snippets`
+[2025-06-04 12:31:39,387][datajoint][INFO] - Deleting 422 rows from `ageuler_ssuhai_closed_loop`.`__preprocess_traces`
+[2025-06-04 12:31:39,485][datajoint][INFO] - Deleting 103 rows from `ageuler_ssuhai_closed_loop`.`__cascade_spikes`
+[2025-06-04 12:31:39,521][datajoint][INFO] - Deleting 103 rows from `ageuler_ssuhai_closed_loop`.`__cascade_traces`
+[2025-06-04 12:31:39,572][datajoint][INFO] - Deleting 422 rows from `ageuler_ssuhai_closed_loop`.`__traces`
+[2025-06-04 12:31:39,620][datajoint][INFO] - Deleting 4 rows from `ageuler_ssuhai_closed_loop`.`roi_mask__roi_mask_presentation`
+[2025-06-04 12:31:39,717][datajoint][INFO] - Deleting 422 rows from `ageuler_ssuhai_closed_loop`.`__roi`
+[2025-06-04 12:31:39,744][datajoint][INFO] - Deleting 4 rows from `ageuler_ssuhai_closed_loop`.`roi_mask`
+[2025-06-04 12:31:39,772][datajoint][INFO] - Deleting 4 rows from `ageuler_ssuhai_closed_loop`.`__presentation`
+[2025-06-04 12:31:39,800][datajoint][INFO] - Deleting 4 rows from `ageuler_ssuhai_closed_loop`.`__field`
+[2025-06-04 12:31:39,834][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`#raw_data_params`
+[2025-06-04 12:31:39,901][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__experiment__animal`
+[2025-06-04 12:31:39,951][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__experiment__exp_info`
+[2025-06-04 12:31:40,001][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__experiment__indicator`
+[2025-06-04 12:31:40,050][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__experiment__pharm_info`
+[2025-06-04 12:31:40,077][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__experiment`
+[2025-06-04 12:31:40,103][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`user_info`
+[2025-06-04 12:31:55,844][datajoint][INFO] - Deletes committed.
+[2025-06-04 12:31:56,872][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__experiment`
+[2025-06-04 12:31:56,873][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:31:57,904][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__field`
+[2025-06-04 12:31:57,904][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:31:58,955][datajoint][INFO] - Deleting 6 rows from `ageuler_ssuhai_closed_loop`.`#preprocess_params`
+[2025-06-04 12:31:59,000][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`#cascade_trace_params`
+[2025-06-04 12:31:59,027][datajoint][INFO] - Deleting 6 rows from `ageuler_ssuhai_closed_loop`.`stimulus`
+[2025-06-04 12:32:01,475][datajoint][INFO] - Deletes committed.
+[2025-06-04 12:32:02,504][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`#raw_data_params`
+[2025-06-04 12:32:02,504][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:32:03,536][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`#preprocess_params`
+[2025-06-04 12:32:03,536][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:32:04,566][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__snippets`
+[2025-06-04 12:32:04,567][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:32:05,597][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__averages`
+[2025-06-04 12:32:05,598][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:32:06,627][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__chirp_q_i`
+[2025-06-04 12:32:06,628][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:32:07,658][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__os_ds_indexes`
+[2025-06-04 12:32:07,658][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:32:08,707][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`__classifier`
+[2025-06-04 12:32:08,733][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`#classifier_method`
+[2025-06-04 12:32:12,506][datajoint][INFO] - Deletes committed.
+[2025-06-04 12:32:13,535][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`classifier_training_data`
+[2025-06-04 12:32:18,231][datajoint][INFO] - Deletes committed.
+[2025-06-04 12:32:19,260][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__classifier`
+[2025-06-04 12:32:19,261][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:32:20,292][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`#cascade_trace_params`
+[2025-06-04 12:32:20,292][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:32:21,321][datajoint][INFO] - Deleting 1 rows from `ageuler_ssuhai_closed_loop`.`#cascade_params`
+[2025-06-04 12:32:24,109][datajoint][INFO] - Deletes committed.
+[2025-06-04 12:32:25,138][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__baden16_traces`
+[2025-06-04 12:32:25,138][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:32:26,168][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__celltype_assignment`
+[2025-06-04 12:32:26,169][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:32:27,199][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`roi_mask`
+[2025-06-04 12:32:27,200][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:32:28,231][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__roi`
+[2025-06-04 12:32:28,231][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:32:29,262][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__traces`
+[2025-06-04 12:32:29,263][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:32:30,293][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__preprocess_traces`
+[2025-06-04 12:32:30,294][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:32:31,324][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__presentation`
+[2025-06-04 12:32:31,325][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:32:32,356][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__cascade_traces`
+[2025-06-04 12:32:32,356][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:32:33,387][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`__cascade_spikes`
+[2025-06-04 12:32:33,388][datajoint][WARNING] - Nothing to delete.
+[2025-06-04 12:32:34,418][datajoint][INFO] - Deleting 0 rows from `ageuler_ssuhai_closed_loop`.`open_retina_hoefling_format`
+[2025-06-04 12:32:34,419][datajoint][WARNING] - Nothing to delete.

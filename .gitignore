@@ -1,5 +1,6 @@
-__pycache__
-.vscode/
-data/
-outputs/
 rgc_classifier.pkl
+thesis/data/recordings
+model_in_the_loop/data/new_data_dump/*
+model_in_the_loop/data/data_dj_format/*
+*/.pyc
+__pycache__
