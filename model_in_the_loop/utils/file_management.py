@@ -5,21 +5,27 @@ from djimaging.utils.mask_utils import to_roi_mask_file
 import os 
 import shutil
 from typing import List, Optional   
+import datetime
 
 
-def create_directory_structure(base_directory: str,date: int ,experiment: int,):
+def create_directory_structure(base_directory: str,
+                               date: str | None = None , # format YYYYMMDD
+                               experiment: int = 1,):
     """Creates folder structure for DJ"""
+    if date is None:
+        date = datetime.date.today().strftime('%Y%m%d')
+
 
     for subfolder in ["Raw","Pre"]:
-        to_create = os.path.join(base_directory,str(date),str(experiment),subfolder)
+        to_create = os.path.join(base_directory,date,str(experiment),subfolder)
         os.makedirs(to_create, exist_ok=True)
 
 
 
 def copy_rec_files(recording_files_dir: str,
                     destination_base: str, 
-                    date: int, 
-                    experiment: int,
+                    date: str | None = None, 
+                    experiment: int  = 1,
                     permissible_stimulus_types: List[str] = ["chirp","dn","mb"] + [f"mc{str(i)}" for i in range(0,21)],
                     full_dummy_ini_dir: Optional[str] = None,
                     ) -> None:
@@ -27,6 +33,8 @@ def copy_rec_files(recording_files_dir: str,
     Copies all smp, smh and ini files from recording dir to a dir structure that one can use in DJ.
     """
     all_files_in_dir = os.listdir(recording_files_dir)
+    if date is None:
+        date = datetime.date.today().strftime('%Y%m%d')
 
 
     # filter files
@@ -69,9 +77,9 @@ def copy_rec_files(recording_files_dir: str,
         # first deal with smp and smh files 
         if ending in ["smp", "smh"]:
             new_stim_file = stim_file + "_iter0" if not "iter" in stim_file else stim_file
-            new_path_full = os.path.join(destination_base, str(date), str(experiment), "Raw", new_stim_file + "." + ending)
+            new_path_full = os.path.join(destination_base, date, str(experiment), "Raw", new_stim_file + "." + ending)
         elif ending == "ini":
-            new_path_full = os.path.join(destination_base,str(date), str(experiment),stim_file + "." + ending)
+            new_path_full = os.path.join(destination_base,date, str(experiment),stim_file + "." + ending)
         else:
             raise ValueError(f"Unknown file ending {ending} for file {filename}")
         
@@ -94,7 +102,7 @@ def copy_rec_files(recording_files_dir: str,
             raise ValueError("full_dummy_ini_dir must be provided if no ini file is found")
 
         full_dummy_ini_file_path = os.path.join(full_dummy_ini_dir, "dummy.ini")
-        dummy_ini_dest = os.path.join(destination_base, str(date), str(experiment), f"{str(date)}_left.ini")
+        dummy_ini_dest = os.path.join(destination_base, date, str(experiment), f"{date}_left.ini")
 
         shutil.copy(full_dummy_ini_file_path, dummy_ini_dest)
         print(f"NO INI FILE found.\nCOPIED dummy ini file from {full_dummy_ini_file_path} to {dummy_ini_dest}")

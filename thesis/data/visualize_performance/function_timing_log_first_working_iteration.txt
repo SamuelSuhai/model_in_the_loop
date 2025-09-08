@@ -1,0 +1,12 @@
+Function upload_iteration_metadata took 13.409922 seconds to execute.
+Function add_iteration_rois took 22.906629 seconds to execute.
+Function add_iteration_traces took 10.815041 seconds to execute.
+Function add_trace_reformatting took 3.138746 seconds to execute.
+Function add_quality_metrics took 2.583943 seconds to execute.
+Function add_celltype_assignments took 5.931357 seconds to execute.
+Function add_spikes took 129.124852 seconds to execute.
+Function extract_data took 4.085224 seconds to execute.
+Function preprocess_for_openretina took 0.103469 seconds to execute.
+Function train_model_online took 30.715734 seconds to execute.
+Function generate_stimulus took 3.327599 seconds to execute.
+Function create_avi_from_tensor took 0.741844 seconds to execute.

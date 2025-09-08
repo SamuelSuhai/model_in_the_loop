@@ -3,9 +3,6 @@ defaults:
   - openretina@model_configs: hoefling_2024_core_readout_low_res
   - openretina/mei_generation: mei_generation
 
-data_subfolders:
-  day: 20250903
-  experiment: 1
 
 paths: 
   # absolute paths: change these to your own

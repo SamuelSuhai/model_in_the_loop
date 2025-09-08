@@ -1,0 +1,13 @@
+stimuli:
+  _target_: openretina.data_io.closedloopdensenoise.stimuli.load_all_stimuli
+  _convert_: object
+  iteration: 0
+  stim_type: "closedloopdensenoise"
+  normalize_stimuli: true
+
+
+responses:
+  _target_: openretina.data_io.closedloopdensenoise.responses.load_all_responses
+  _convert_: object
+  iteration: 0
+  stim_type: "closedloopdensenoise"

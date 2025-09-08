@@ -1,6 +1,13 @@
-rgc_classifier.pkl
+.vscode
 thesis/data/recordings
 model_in_the_loop/data/new_data_dump/*
 model_in_the_loop/data/data_dj_format/*
-*/.pyc
-__pycache__
+# Python bytecode
+*.pyc
+*.pyo
+*.pyd
+.Python
+__pycache__/
+**/__pycache__/
+*.so
+.Python
