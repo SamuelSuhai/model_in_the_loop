@@ -392,6 +392,7 @@ class ExtendedAutoRoiGui(RoiCanvasData):
             all_dj_wrappers: List[DJComputeWrapper],
             field_key= Dict[str, Any],  # field key to select the data
             take_roi_rgba_from_this_analysis: Optional[str] = None, # can select which analysis to take the roi color and alpha from
+            do_not_compute_only_visualize: bool = False, # if True, will not compute analyses wrappers but only visualize existing entries
             pres_key= None,
             bg_dict=None,
             main_stim_idx=0,
@@ -419,6 +420,7 @@ class ExtendedAutoRoiGui(RoiCanvasData):
 
         # get infor from dj_wrapper
         table_holder_info = get_roi_canvas_data_from_DJTableHolder(dj_table_holder,field_key,pres_key,)
+        self.do_not_compute_only_visualize = do_not_compute_only_visualize 
 
         super().__init__(ch0_stacks=table_holder_info['ch0_stacks'],
                          ch1_stacks=table_holder_info['ch1_stacks'],
@@ -1536,29 +1538,19 @@ class ExtendedAutoRoiGui(RoiCanvasData):
         """Compute (if not already done) update the anslysis plot for when when changing modes and analysis type and ROIs"""
         # call the compute function. Checking whether its already computed is done in the wrapper
 
-        self.dj_wrappers_dict[self._selected_analysis_type].compute_analysis(
-            field_key = self.field_key,
-            progress_callback=self.update_progress  # Pass the update_progress method as callback
-        )
+        if not self.do_not_compute_only_visualize:
+            self.dj_wrappers_dict[self._selected_analysis_type].compute_analysis(
+                field_key = self.field_key,
+                progress_callback=self.update_progress  # Pass the update_progress method as callback
+            )
 
         with self.analysis_plot:
             clear_output(wait=True)
 
             self.log(f'Updating analysis plot for {self._selected_analysis_type}')
 
-            # call the plotting function of the wrapper if a single roi is selected. This distinguishes between the overview mode
-            # when all ROIs should be selected. The output of the functions will be displayed in the analysis_plot widget.
-            if self._selected_roi == 0:
-                self.log(f'gettin gplot for selected roi  {self._selected_roi}')
-                fig,ax = self.dj_wrappers_dict[self._selected_analysis_type].plot_overview()
-                self.log(f'gettin gplot for selected roi  {self._selected_roi}')
-
-            elif self._selected_roi > 0:
-
-                self.log(f'gettin gplot for selected roi  {self._selected_roi}')
-
-                # plot1 shows the figure 
-                self.dj_wrappers_dict[self._selected_analysis_type].plot1(field_key = self.field_key,roi_id= self._selected_roi)
+            # plot1 shows the figure 
+            self.dj_wrappers_dict[self._selected_analysis_type].plot1(field_key = self.field_key,roi_id= self._selected_roi)
 
    
 
@@ -1684,14 +1676,30 @@ class ExtendedAutoRoiGui(RoiCanvasData):
         return stim, condition
 
     def check_databse_for_mask(self) ->None:
-        # TODO: Implement a check for the database to see if the mask already exists
-        pass
+        """Check if there is already a mask in the database for the current field and main stimulus"""
+        field_roi_mask_tab = self.roi_mask_table & self.field_key
+        
+        if len(field_roi_mask_tab) == 0:
+            self.log('No ROI mask found in database')
+            return
 
-        # self.init_roi_mask()
-        # self.update_info()
-        # self.update_roi_options()
-        # self.draw_current_mask_img(update=True)
-        # self.draw_roi_masks_img(update=True)
+        # fetch roi mask from db 
+        roi_mask_new = field_roi_mask_tab.fetch1('roi_mask')
+
+
+        # apply shifts in self.shifts
+        #self.roi_mask_table.RoiMaskPresentation()
+        
+        # visualize it in gui
+        self.init_roi_mask(roi_mask_new)
+        self.update_info()
+        self.update_roi_options()
+        self.draw_current_mask_img(update=True)
+        self.draw_roi_masks_img(update=True)
+        self.set_dangerzone(False)
+        self.set_selected_tool('select')
+
+
 
     def insert_database_and_get_traces(self):
         """Inserts ROI mask into DB and calls on the preporcessor to compute the traces, necessar for further analysis"""

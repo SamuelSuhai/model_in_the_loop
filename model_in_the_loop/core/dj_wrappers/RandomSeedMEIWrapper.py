@@ -1,5 +1,6 @@
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import os
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from .base import DJComputeWrapper, DJTableHolder
@@ -8,13 +9,17 @@ from model_in_the_loop.utils.mei_generation import (reconstruct_mei_from_decompo
                                 decompose_mei, get_model_mei_response,Center,get_model_gaussian_scaled_means,
                                 STIMULUS_SHAPE,FRAME_RATE_MODEL
                             )
+
+from model_in_the_loop.utils.datajoiont_utils import get_rois_in_field_restriction_str
 import pickle
 import torch
 from openretina.models.core_readout import BaseCoreReadout
 from openretina.modules.layers.ensemble import EnsembleModel
+from openretina.data_io.hoefling_2024.responses import make_final_responses
 
 
 from model_in_the_loop.utils.model_training import load_stimuli, train_model_online
+from model_in_the_loop.utils.simple_logging import log
 
 class RandomSeedMEIWrapper(DJComputeWrapper):
 
@@ -413,6 +418,13 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             pickle.dump(self.session_dict_raw, f)
         print(f"Saved raw session dict to {session_dict_raw_path}")
 
+        # save neuron data dict
+        neuron_data_dict = self.neuron_data_dict
+        neuron_data_dict_path = os.path.join(save_dir, "neuron_data_dict.pkl")
+        with open(neuron_data_dict_path, 'wb') as f:
+            pickle.dump(neuron_data_dict, f)
+        print(f"Saved neuron data dict to {neuron_data_dict_path}")
+
         # save mei data container
         mei_data_container_path = os.path.join(save_dir, "mei_data_container.pkl")
         with open(mei_data_container_path, 'wb') as f:
@@ -457,6 +469,12 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         with open(session_dict_raw_path, 'rb') as f:
             self.session_dict_raw = pickle.load(f)
         print(f"Loaded raw session dict from {session_dict_raw_path}")
+
+        # # load neuron data dict
+        # neuron_data_dict_path = os.path.join(load_dir, "neuron_data_dict.pkl")
+        # with open(neuron_data_dict_path, 'rb') as f:
+        #     self.neuron_data_dict = pickle.load(f)
+        # print(f"Loaded neuron data dict from {neuron_data_dict_path}")
 
         # load mei data container
         mei_data_container_path = os.path.join(load_dir, "mei_data_container.pkl")

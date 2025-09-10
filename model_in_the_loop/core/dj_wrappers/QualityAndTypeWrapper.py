@@ -115,7 +115,8 @@ class QualityAndTypeWrapper(DJComputeWrapper):
                                       d_qi_min: float, 
                                       qidx_min: float,
                                       celltypes: List[int] = list(range(99)),
-                                      classifier_confidence: float = 0.0) -> List[int]:
+                                      classifier_confidence: float = 0.0,
+                                      verbose = True) -> List[int]:
         """
         For a field key it looks in the tables ChirpQI and OsDsIndexes for the d_qi and qidx values. Takes rois that pass either chrip or ori_dir quality index as passing.
         """
@@ -139,12 +140,15 @@ class QualityAndTypeWrapper(DJComputeWrapper):
             raise ValueError("CelltypeAssignment table is empty for the given field_key")
         
         # create a criterion
-        roi_ids_celltype,celltype_data,confidence_data = celltype_table.fetch('roi_id','celltype','confidence')
+        roi_ids_celltype,celltype_data,confidence_scors = celltype_table.fetch('roi_id','celltype','max_confidence')
         celltype_data_dict = {roi_id: celltype for roi_id, celltype in zip(roi_ids_celltype, celltype_data)}
         
         #  get the confidence of assigned group which is the max 
-        confidence_scors = [all_confidences.max() for all_confidences in confidence_data]
         confidence_data_dict = {roi_id: confidence for roi_id, confidence in zip(roi_ids_celltype, confidence_scors)}
+        if verbose:
+            print(f"Number filtered rois based on classifier confidence {sum(confidence_scors > classifier_confidence)}.")
+            print(f"Number filtered rois based on celltypes {sum([t in celltypes for t in celltype_data])}.")
+            print(f"Number filtered rois based on Chirp MB QI {sum((qidx_values >qidx_min) | (d_qi_values > d_qi_min) )}.")
 
         # Filter roi_ids based on the criteria
         passing_roi_ids = []
@@ -158,9 +162,10 @@ class QualityAndTypeWrapper(DJComputeWrapper):
                 passing_roi_ids.append(roi_id)
 
         n_rois_after = len(passing_roi_ids)
-        print(f"Found {n_rois_after} rois passing the criterion out of {n_rois_before} rois.\
-              ({d_qi_min=}, chrip {qidx_min=}, {celltypes=}, {classifier_confidence=})")
-        return passing_roi_ids
+        if verbose:
+            print(f"Found {n_rois_after} rois passing the criterion out of {n_rois_before} rois.\
+                ({d_qi_min=}, chrip {qidx_min=}, {celltypes=}, {classifier_confidence=})")
+            return passing_roi_ids
     
     def text1(self,roi_id: int, field_key = {}, ) -> str:
         """

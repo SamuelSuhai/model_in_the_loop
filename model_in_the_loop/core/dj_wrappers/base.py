@@ -30,7 +30,6 @@ class DJTableHolder:
                  repo_directory: str,
                  dj_config_directory: str,
                  rgc_output_directory: str,
-                 data_subfolders: Dict[str, str],
                  
                  userinfo: dict,
 
@@ -60,14 +59,13 @@ class DJTableHolder:
         self.home_directory: str = home_directory
         self.config_file: str = os.path.join(self.home_directory,dj_config_directory, f'dj_{self.username}_conf.json')
         self.rgc_output_folder = os.path.join(home_directory, rgc_output_directory)
-        self.data_subfolders = data_subfolders
 
         # get repo directory
         self.repo_directory: str = repo_directory
 
         # information for UserInfo table
         self.userinfo: dict = userinfo
-        self.schema_name = f"ageuler_{self.username}_closed_loop_testing"
+        self.schema_name = f"ageuler_{self.username}_closed_loop"
 
         # some tests idk if necessary
         assert self.username == subprocess.check_output(["whoami"]).decode().strip()

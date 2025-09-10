@@ -1,7 +1,7 @@
 from typing import Any, Callable, Dict, List, Optional
 import os
 from djimaging.utils.mask_utils import to_roi_mask_file
-
+from omegaconf import DictConfig
 import os 
 import shutil
 from typing import List, Optional   
@@ -9,11 +9,10 @@ import datetime
 
 
 def create_directory_structure(base_directory: str,
-                               date: str | None = None , # format YYYYMMDD
                                experiment: int = 1,):
     """Creates folder structure for DJ"""
-    if date is None:
-        date = datetime.date.today().strftime('%Y%m%d')
+
+    date = datetime.date.today().strftime('%Y%m%d')
 
 
     for subfolder in ["Raw","Pre"]:
@@ -28,10 +27,14 @@ def copy_rec_files(recording_files_dir: str,
                     experiment: int  = 1,
                     permissible_stimulus_types: List[str] = ["chirp","dn","mb"] + [f"mc{str(i)}" for i in range(0,21)],
                     full_dummy_ini_dir: Optional[str] = None,
+                    ini_file_static_args: Optional[Dict[str,Any]] = None,
                     ) -> None:
     """
     Copies all smp, smh and ini files from recording dir to a dir structure that one can use in DJ.
     """
+    if isinstance(ini_file_static_args, DictConfig):
+        ini_file_static_args = dict(ini_file_static_args)
+
     all_files_in_dir = os.listdir(recording_files_dir)
     if date is None:
         date = datetime.date.today().strftime('%Y%m%d')
@@ -48,15 +51,24 @@ def copy_rec_files(recording_files_dir: str,
         # Check if the file is a permissible stimulus type
         file_info_list = filename.split('.')[0].split('_')
         file_info_list = [info.lower() for info in file_info_list]  # Normalize to lowercase
+        
+        if "lr" in file_info_list:
+            eye = "left"
+        elif "rr" in file_info_list:
+            eye = "right"
+        else:
+            raise ValueError(f"File {filename} does not specify eye (lr or rr) in its name. Need this to get eye info")
+
+
         if not any(stimulus_type in file_info_list for stimulus_type in permissible_stimulus_types):
             print(f"SKIPPING File {filename}: does not match any permissible stimulus type.")
             continue
 
         filtered_files_in_dir.append(filename)
 
-    
 
     for filename in filtered_files_in_dir:
+
 
         if not os.path.isfile(os.path.join(recording_files_dir, filename)):
             continue
@@ -102,10 +114,17 @@ def copy_rec_files(recording_files_dir: str,
             raise ValueError("full_dummy_ini_dir must be provided if no ini file is found")
 
         full_dummy_ini_file_path = os.path.join(full_dummy_ini_dir, "dummy.ini")
-        dummy_ini_dest = os.path.join(destination_base, date, str(experiment), f"{date}_left.ini")
+        dummy_ini_dest = os.path.join(destination_base, date, str(experiment), f"{date}_{eye}.ini")
+        
+        # add date and eye to ini file
+        modificatoins = ini_file_static_args if ini_file_static_args is not None else {}
+        modificatoins.update({"string_date":  datetime.date.today().strftime('%Y-%m-%d'),
+                              "string_eye": eye,
+                              })
+        print(f"Copying modified ini file because no ini file found in data dump ...")
 
-        shutil.copy(full_dummy_ini_file_path, dummy_ini_dest)
-        print(f"NO INI FILE found.\nCOPIED dummy ini file from {full_dummy_ini_file_path} to {dummy_ini_dest}")
+        modify_ini_file_preserving_format(full_dummy_ini_file_path, dummy_ini_dest, modifications=modificatoins, verbose=True)
+
 
 
 
@@ -128,3 +147,72 @@ def clear_roi_field_field(Presentation, field_key: Dict[str, Any], safemode: boo
         if os.path.exists(file):
             os.remove(file)
             print(f"Removed file: {file}")
+
+def modify_ini_file_preserving_format(input_path: str, 
+                                      output_path: str, 
+                                      modifications: Dict[str, Any],
+                                      verbose = False) -> None:
+    """
+    Load an INI file, modify its entries while preserving comments and formatting,
+    and save to a new location.
+    
+    Args:
+        input_path (str): Path to the input INI file
+        output_path (str): Path where the modified INI file will be saved
+        modifications (Dict[str, Any]): Dictionary of modifications where:
+            - Keys are parameter names (e.g., "string_eye", "string_date")
+            - Values are the new values to set
+    
+    Example:
+        modify_ini_file_preserving_format(
+            "dummy.ini",
+            "modified.ini",
+            {
+                "string_date": "2025-09-15",
+                "string_userName": "newexperimenter",
+                "string_eye": "right"
+            }
+        )
+    """
+    # Read the original file as text
+    with open(input_path, 'r') as f:
+        lines = f.readlines()
+    
+    # Track current section for line-by-line processing
+    current_section = None
+    modified_lines = []
+    
+    # Process each line
+    for line in lines:
+        line = line.rstrip('\n')
+        
+        # Check if this is a section header
+        if line.strip().startswith('[') and line.strip().endswith(']'):
+            current_section = line.strip()[1:-1]
+            modified_lines.append(line)
+            continue
+            
+        # Check if this is a key-value pair
+        if '=' in line:
+            key, value = line.split('=', 1)
+            key = key.strip()
+            
+            # Check if this key should be modified
+            if key in modifications:
+                new_value = str(modifications[key])
+                modified_lines.append(f"{key}={new_value}")
+                if verbose:
+                    print(f"Modified {key}: {value.strip()} -> {new_value}")
+                continue
+        
+        # If not modified, keep the original line
+        modified_lines.append(line)
+    
+    # Create the output directory if it doesn't exist
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    
+    # Write the modified content to the output file
+    with open(output_path, 'w') as f:
+        f.write('\n'.join(modified_lines))
+    if verbose:
+        print(f"Modified INI file (with preserved formatting) saved to: {output_path}")

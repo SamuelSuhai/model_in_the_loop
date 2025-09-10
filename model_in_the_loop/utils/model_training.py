@@ -73,7 +73,7 @@ def load_pretrained_ensemble_model(ckpt_dir: str,seeds: List[str],set_eval=True)
     return ensemble_model
 
 
-def single_training_loop(dataloaders,cfg,data_info,log,load_model_path=None,seed= None):
+def single_training_loop(dataloaders,cfg,data_info,log,load_model_path=None,seed= None) -> Tuple[BaseCoreReadout | EnsembleModel, str]:
     train_loader = data.DataLoader(
         LongCycler(dataloaders["train"], shuffle=True), batch_size=None, num_workers=0, pin_memory=True
     )
@@ -146,12 +146,7 @@ def single_training_loop(dataloaders,cfg,data_info,log,load_model_path=None,seed
     trainer.test(model, dataloaders=[c for _, c in short_cyclers], ckpt_path=None)
 
 
-    ### Testing
-    log.info("Testing individual neurons!")
-    neuron_testset_correl = get_single_neuron_test_correlations(dataloaders, model)
-    log.info(f"Test set neuron correlations statistics (mean,std,min,max): {[func(list(neuron_testset_correl.values())) for func in [np.mean, np.std, np.min, np.max]]}")
-    
-    return model,neuron_testset_correl, best_model_path
+    return model, best_model_path
 
 
 #@time_it
@@ -188,7 +183,9 @@ def train_model_online(cfg: DictConfig,
     is_ensemble_model =cfg.get("is_ensemble_model", False)
     log.info(f"Is ensemble model: {is_ensemble_model}")
     if is_ensemble_model:
-        assert os.path.isdir(cfg.paths.load_model_path), "For ensemble model, load_model_path should be a directory containing seed_x.ckpt files."
+        assert os.path.isdir(cfg.paths.load_model_path), \
+            f"For ensemble model, load_model_path should be a \
+                directory containing seed_x.ckpt files. but got {cfg.paths.load_model_path}"
         seed_and_path = get_seed_and_path(cfg.paths.load_model_path)
         log.info(f"Found {len(seed_and_path)} seeds in {cfg.paths.load_model_path}: {list(seed_and_path.keys())}")
 
@@ -198,7 +195,7 @@ def train_model_online(cfg: DictConfig,
             log.info(f"Loading model for seed {seed} from {path}")
 
             # perform single training loop for each model
-            model,_,best_path = single_training_loop(dataloaders, 
+            model,best_path = single_training_loop(dataloaders, 
                                                         cfg, data_info, 
                                                         log, 
                                                         load_model_path=path,
@@ -208,24 +205,31 @@ def train_model_online(cfg: DictConfig,
 
         # bind to ensemble and test
         model = EnsembleModel(*all_models)
-        neuron_testset_correl = get_single_neuron_test_correlations(dataloaders, model)
     else:
 
-        model,neuron_testset_correl, best_model_path = single_training_loop(dataloaders, cfg, data_info, log)
+        model, best_model_path = single_training_loop(dataloaders, cfg, data_info, log)
+
+    # evaluate single neuron correlations on test set
+    neuron_testset_correl = get_single_neuron_session_correlations(dataloaders, model,split="test")
 
     return model,neuron_testset_correl, best_model_path
 
 
 
-def get_single_neuron_test_correlations(dataloaders , model: BaseCoreReadout | EnsembleModel) ->  Dict[int, float]:
-    """Calculate the correlation between model predictions and targets for each neuron in each session in the test session."""
+def get_single_neuron_session_correlations(dataloaders , 
+                                           model: BaseCoreReadout | EnsembleModel, 
+                                           split = "test",
+                                           return_traces=False) ->  Dict[int, float] | Tuple[Dict[int, float], Dict[int, Tuple[np.ndarray,np.ndarray]]]:
+    """Calculate the correlation between model predictions and targets for each neuron in each session in the session of a certain split."""
+
+    assert split in dataloaders, f"Split {split} not found in dataloaders."
 
     neuron_correlations = {}
-    if len(dataloaders["test"]) != 1:
-        raise ValueError(f"Expected only one session in the test set for online training. but found {len(dataloaders['test'])} sessions.")
+    if len(dataloaders[split]) != 1:
+        raise ValueError(f"Expected only one session in the test set for online training. but found {len(dataloaders[split])} sessions.")
 
 
-    for session_id, session_dataloader in dataloaders["test"].items():
+    for session_id, session_dataloader in dataloaders[split].items():
         all_preds, all_targets = [], []
         
         # Run model on all test batches
@@ -246,16 +250,20 @@ def get_single_neuron_test_correlations(dataloaders , model: BaseCoreReadout | E
         # Fast vectorized correlation calculation
         session_correlations = {}
         num_neurons = all_targets.shape[-1]
-
+        
+        all_pred_target = {}
         conv_eats_n_frames = all_targets.shape[1] - all_preds.shape[1]
         for i in range(num_neurons):
             pred = all_preds[..., i].flatten()
             target = all_targets[:,conv_eats_n_frames:, i].flatten()
             corr = np.corrcoef(pred, target)[0, 1] if np.var(pred) > 0 and np.var(target) > 0 else 0
             session_correlations[i] = corr
+            all_pred_target[i] = (pred,target)
             
         neuron_correlations = session_correlations
-
+    if return_traces:
+        return (neuron_correlations, all_pred_target)
+    
     return neuron_correlations
         
 

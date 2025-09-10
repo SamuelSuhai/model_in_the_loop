@@ -1,0 +1,6 @@
+These are data from when I used the model I trained on the data I gathered in the second (failed ) closed loop experiemnt and 
+got predicted and actual. 
+<split>_corrs has the correlations and the pred?targets are the predicted vs actual traces from the 
+dataloaders of the split. 
+the session1 ... is a comparison where I ran the same code on a field already trained in the model 
+that should not have changed during online training.
