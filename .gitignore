@@ -3,6 +3,8 @@ thesis/data/recordings
 model_in_the_loop/data/new_data_dump/*
 model_in_the_loop/data/data_dj_format/*
 model_in_the_loop/output/*
+model_in_the_loop/quick_testing
+model_in_the_loop/data/online_computed_data/*
 # Python bytecode
 *.pyc
 *.pyo

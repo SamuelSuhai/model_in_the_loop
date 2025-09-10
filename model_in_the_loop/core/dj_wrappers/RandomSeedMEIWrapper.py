@@ -26,6 +26,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
     def __init__(self,dj_table_holder: DJTableHolder,
                 cfg: DictConfig,
                  seeds: List[int],
+
                 ) -> None:
         
         self.dj_table_holder = dj_table_holder
@@ -34,6 +35,8 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         self.model_configs = cfg.model_configs
         self.mei_generation_params = cfg.openretina.mei_generation
         self.quality_filtering = cfg.quality_filtering
+        self.save_dir_parent = os.path.join(cfg.paths.repo_directory,
+                                            "model_in_the_loop/data/online_computed_data" )
 
         self.seeds = seeds
         self.colors = plt.cm.nipy_spectral(np.linspace(0, 1,len(self.seeds)))
@@ -219,13 +222,24 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
 
     def plot1(self,
+              field_key: Dict[str, Any],
               roi_id: int,
               axs = None, 
               show = True) -> None:
+        
+        if not hasattr(self,"roi2readout_idx_wmeis"):
+            raise ValueError("No readouts found with meis for this wrapper instance. \
+                             Please run mei_subanalysis first before plotting.")
 
         if roi_id not in self.roi2readout_idx_wmeis.keys():
             print(f"ROI {roi_id} does not have an MEI. Select among the following: \n{list(self.roi2readout_idx_wmeis.keys())}")
             return
+        
+        # sanity check field_key should be in CascadeSpikes 
+        restricted_spikes = (self.dj_table_holder("CascadeSpikes")() & field_key & {'roi_id': roi_id})
+        if len(restricted_spikes) == 0:
+            raise ValueError (f"No spikes found in CascadeSpikes for roi_id {roi_id} and given field_key {field_key}. \
+                              Please run check_requirements first.")
 
         
         # find neuron_id for roi_id
@@ -340,7 +354,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         
         """
         rgb_of_included = np.array([255,0,0]) # red for included rois
-        rgb_nonincluded = np.array([122,122,122]) # gray for non-included rois
+        rgb_nonincluded = np.array([0,0,255]) # blue for non-included rois
         alpha_of_included = 122.0 # full alpha for included rois
         alpha_nonincluded = 20.0
         
@@ -352,64 +366,73 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
         return roi2rgb255, roi2alpha
 
-    # def upload_to_db(self,field_key = {}) -> None:
-    #     """
-    #     Uploads the generated MEIs and their responses to the database.
-    #     """
-    #     if len(self.neuron_seed_mei_dict) == 0:
-    #         raise ValueError("No MEIs generated. Call mei_subanalysis first.")
-        
-    #     if field_key == {}:
-    #         # fetch from db 
-    #         field_table = self.dj_table_holder('Field')()
-    #         if len(field_table) != 1:
-    #             raise ValueError("Expecte dexactly one field key.")
-    #         field_key = self.dj_table_holder('Field')().proj().fetch(as_dict=True)[0]
-        
-    #     # get openretina hoefling format session_name and data
-    #     session_name = (self.dj_table_holder("OpenRetinaHoeflingFormat")() & field_key).fetch1("session_name")
-    #     session_data_dict = (self.dj_table_holder("OpenRetinaHoeflingFormat")() & field_key).fetch1("session_data_dict")
+    def upload_to_db(self,
+                     field_key) -> None:
+        """
+        Uploads the generated MEIs and their responses to the database.
+        """
+        if len(self.mei_data_container) == 0:
+            raise ValueError("No MEIs generated. Call mei_subanalysis first.")
 
-    #     ## the meis 
-    #     # mapping readout idx with mei to rois
-    #     readout_idx_wmei2rois = {readout_idx:roi_id for roi_id,readout_idx in self.roi2readout_idx_wmeis.items()}
+        ## 1. upload raw data to db
+        orhf_key = {**field_key,
+                    "session_name": self.new_session_id,
+                    "session_data_dict": self.session_dict_raw,}
         
-    #     for readout_idx, seed_mei_dict in self.neuron_seed_mei_dict.items():
-    #         for seed, mei in seed_mei_dict.items():
-                
-    #             # get the corresponding roi_id
-    #             roi_id = readout_idx_wmei2rois[readout_idx]
+        self.dj_table_holder("OpenRetinaHoeflingFormat")().insert1(
+            orhf_key
+        )
 
-    #             # get the response of the model 
-    #             response = self.neuron_seed_mei_responses[readout_idx][seed]
+        ## 2. the meis 
+        for i,row in self.mei_data_container.iterrows():
+            readout_idx = row["readout_idx"]
+            seed = row["seed"]
+            mei = row["mei"]
+            response = row["responses_all_readout_idx"]
+            roi_id = row["roi_id"]
+
+            key = {**field_key,
+                   "seed": seed, 
+                   "readout_idx": readout_idx, 
+                   "roi_id": roi_id,
+                   "session_name": self.new_session_id,
+                   }
             
-    #             key = {**field_key,
-    #                    "seed": seed, 
-    #                    "readout_idx": readout_idx, 
-    #                    "roi_id": roi_id,
-    #                    "session_name": session_name,
-    #                    }
-                
-    #             #insert to table 
-    #             self.dj_table_holder("OnlineMEIs")().insert1(
-    #                 {
-    #                     **key,
-    #                     "mei": mei.detach().cpu().numpy(), # store the array
-    #                     "model_response": response.detach().cpu().numpy(),
-    #                 },
-    #             )
+            # insert to table 
+            self.dj_table_holder("OnlineMEIs")().insert1(
+                {
+                    **key,
+                    "mei": mei.detach().cpu().numpy(), # store the array
+                },
+            )
+        ## 3. the model
 
-    #             ## the model checkpoint
-    #             self.dj_table_holder("OnlineTrainedModel")().insert1(
-    #                 {
-    #                     **field_key,
-    #                     "session_name": session_name,
-    #                     "model_chkpt_path": self.best_model_ckp
+        # ## the model checkpoint
+        # self.dj_table_holder("OnlineTrainedModel")().insert1(
+        #     {
+        #         **field_key,
+        #         "session_name": self.new_session_id,
+        #         "model_chkpt_path": self.best_model_ckp
 
-    #                 }
-    #             )
-    def save_all_data_to_dir(self, save_dir: str) -> None:
+        #     }
+        # )
+    
+    def save_local_and_upload(self) -> None:
+        """
+        A wrapper to save all data to a local directory and then upload to db.
+        """
+        self.save_all_data_to_dir(self.save_dir_parent)
+        self.upload_to_db(self.field_key)
+
         
+
+    def save_all_data_to_dir(self, save_dir_parent: str) -> None:
+        assert os.path.isdir(save_dir_parent), f"save_dir_parent {save_dir_parent} is not a directory."
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_dir_child = self.field_key["field"] + "_" + timestamp 
+        save_dir = os.path.join(save_dir_parent,timestamp)
+                
         os.makedirs(save_dir, exist_ok=True)
 
         # save raw session data
@@ -451,10 +474,15 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             "neuron_testset_correls": self.neuron_testset_correls,
             "new_session_id": self.new_session_id,
             "scaled_means_before_centering": self.scaled_means_before_centering,
-            
-        
-
+            "field_key": self.field_key,
         }
+
+        # selected mei order based on activity type etc as in self.select_subset_of_meis_for_each_roi
+        if hasattr(self, 'roi_id2mei_ids'):
+            metadata["roi_id2mei_ids"] = self.roi_id2mei_ids
+        if hasattr(self, 'roi_id2selected_mei_ids'):
+            metadata["roi_id2info"] = self.roi_id2info
+
         metadata_path = os.path.join(save_dir, "metadata.pkl")
         with open(metadata_path, 'wb') as f:
             pickle.dump(metadata, f)
@@ -470,11 +498,11 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             self.session_dict_raw = pickle.load(f)
         print(f"Loaded raw session dict from {session_dict_raw_path}")
 
-        # # load neuron data dict
-        # neuron_data_dict_path = os.path.join(load_dir, "neuron_data_dict.pkl")
-        # with open(neuron_data_dict_path, 'rb') as f:
-        #     self.neuron_data_dict = pickle.load(f)
-        # print(f"Loaded neuron data dict from {neuron_data_dict_path}")
+        # load neuron data dict
+        neuron_data_dict_path = os.path.join(load_dir, "neuron_data_dict.pkl")
+        with open(neuron_data_dict_path, 'rb') as f:
+            self.neuron_data_dict = pickle.load(f)
+        print(f"Loaded neuron data dict from {neuron_data_dict_path}")
 
         # load mei data container
         mei_data_container_path = os.path.join(load_dir, "mei_data_container.pkl")
@@ -505,42 +533,22 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         self.neuron_testset_correls = metadata["neuron_testset_correls"]
         self.new_session_id = metadata["new_session_id"]
         self.scaled_means_before_centering = metadata["scaled_means_before_centering"]
-        print(f"Loaded metadata from {metadata_path}")
+        self.field_key = metadata["field_key"]
+
+        if "roi_id2mei_ids" in metadata:
+            self.roi_id2mei_ids = metadata["roi_id2mei_ids"]
+        if "roi_id2info" in metadata:
+            self.roi_id2info = metadata["roi_id2info"]
+        print(f"Loaded metadata from {metadata_path}, with keys: {list(metadata.keys())}")
 
 
 
-    # def fetch_from_db(self, field_key: Dict[str, Any] = {}) -> None:
-    #     """
-    #     Fetches the MEIs from the database and stores them in self.neuron_seed_mei_dict. 
-    #     Assumes that this dict is empty before or not set. also stres the roi readout idx mapping in self.roi_ids2readout_idx_wmei.
-    #     """
-
-    #     assert len(self.neuron_seed_mei_dict) == 0, "The neuron_seed_mei_dict should be empty before fetching from the database."
-
-    #     if not hasattr(self, 'roi2readout_idx_wmeis'):
-    #         self.roi2readout_idx_wmeis = {}
-
-    #     # fetch all MEIs for the given field_key
-    #     mei_table = self.dj_table_holder("OnlineMEIs")() & field_key
-        
-    #     if len(mei_table) == 0:
-    #         raise ValueError("No MEIs found for the given field_key.")
-        
-    #     # iterate over the MEIs and store them in the dictionary
-    #     for row in mei_table.fetch(as_dict=True):
-    #         readout_idx = row['readout_idx']
-    #         seed = row['seed']
-    #         mei = row['mei']
-    #         roi_id = row['roi_id']
-
-    #         # add to neuron_seed_mei_dict
-    #         self.neuron_seed_mei_dict[readout_idx][seed] = mei
-
-    #         # also store the mapping from roi_id to readout_idx
-    #         if readout_idx not in self.roi2readout_idx_wmeis:
-    #             self.roi2readout_idx_wmeis[roi_id] = readout_idx
-
-    #     ## Model TODO
+    def fetch_from_db(self, field_key: Dict[str, Any] = {}) -> None:
+        """
+        =
+        """
+        pass
+        ## TODO
         
     def select_subset_of_meis_for_each_roi(self) -> Tuple[Dict[int,List[str]], Dict[int, Dict[str, List[Any]]]]:
         """
@@ -653,6 +661,10 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
             # store the mei_ids 
             roi_id2mei_ids[roi_id] = selected_mei_ids
+
+        # store for analysis
+        self.roi_id2mei_ids = roi_id2mei_ids
+        self.roi_id2info = roi_id2info
 
         return roi_id2mei_ids, roi_id2info
 
@@ -858,7 +870,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
 
 
-    def compute_analysis(self, field_key = {},
+    def compute_analysis(self, field_key,
                          roi_id_subset: Optional[List[int]] = None,
                          progress_callback: Optional[Callable] = None) -> None:
 
@@ -866,6 +878,11 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         if len(self.dj_table_holder('OpenRetinaHoeflingFormat')() & field_key) == 0:
             if progress_callback is not None:
                 progress_callback(0)
+            
+            if hasattr(self, 'field_key'):
+                if self.field_key == field_key:
+                    print("WARNING: field_key in wrapper is the same as the one being passed. Overwriting anyway.")
+            self.field_key = field_key  
 
             self.check_requirements(field_key,
                                     roi_id_subset=roi_id_subset,
@@ -889,6 +906,8 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
             if progress_callback is not None:
                 progress_callback(100)
+            
+            self.save_local_and_upload()
             
 
         else:

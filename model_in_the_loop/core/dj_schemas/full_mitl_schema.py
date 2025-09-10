@@ -388,7 +388,6 @@ class OnlineMEIsTemplate(dj.Manual):
         seed:           int  # the seed used to generate the MEI
         ---
         mei:            longblob    # np.ndarray of shape (batch,channel,time,height,width)
-        model_response:  longblob    # np.ndarray of shape (time,)
         """
         return definition
 

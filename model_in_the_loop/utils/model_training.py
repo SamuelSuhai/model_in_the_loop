@@ -210,7 +210,7 @@ def train_model_online(cfg: DictConfig,
         model, best_model_path = single_training_loop(dataloaders, cfg, data_info, log)
 
     # evaluate single neuron correlations on test set
-    neuron_testset_correl = get_single_neuron_session_correlations(dataloaders, model,split="test")
+    neuron_testset_correl = get_single_neuron_session_correlations(dataloaders, model,split="test",return_traces=False)
 
     return model,neuron_testset_correl, best_model_path
 

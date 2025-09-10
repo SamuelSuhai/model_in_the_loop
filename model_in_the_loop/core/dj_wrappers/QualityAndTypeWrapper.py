@@ -228,8 +228,13 @@ class QualityAndTypeWrapper(DJComputeWrapper):
         single_averages_table = (self.dj_table_holder('Averages')() & field_key & {'roi_id': roi_id, 'stim_name': stim_name})
         snippets_table = self.dj_table_holder('Snippets')() & field_key
 
+        snippets_restricted = snippets_table & single_averages_table
+        if len(snippets_restricted) == 0 or len(single_averages_table) == 0:
+            print(f"No data found for ROI {roi_id} and stim {stim_name}.")
+            return
+        
 
-        snippets_t0, snippets_dt, snippets, triggertimes_snippets = (snippets_table & single_averages_table).fetch1(
+        snippets_t0, snippets_dt, snippets, triggertimes_snippets = snippets_restricted.fetch1(
             'snippets_t0', 'snippets_dt', 'snippets', 'triggertimes_snippets')
 
         average, average_norm, average_t0, average_dt, triggertimes_rel = \

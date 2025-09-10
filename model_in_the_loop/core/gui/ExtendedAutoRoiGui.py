@@ -38,6 +38,8 @@ class RoiCanvasData:
             ch1_stacks,
             output_files,
             pres_names,
+            shifts=None,
+            initial_roi_mask=None,
             bg_dict=None,
             main_stim_idx: int = 0,
             n_artifact: int = 0,
@@ -46,6 +48,15 @@ class RoiCanvasData:
             pixel_size_um=(1., 1.),
     ):
         """ROI canvas to draw ROIs"""
+
+        # some initial checks
+        for ch0_stack, ch1_stack in zip(ch0_stacks, ch1_stacks):
+            if (ch0_stack.shape[:2] != ch0_stacks[0].shape[:2]) or (ch1_stack.shape[:2] != ch0_stacks[0].shape[:2]):
+                raise ValueError('Incompatible shapes between stacks')
+
+        if initial_roi_mask is not None and initial_roi_mask.shape != ch0_stacks[0].shape[:2]:
+            raise ValueError('Incompatible shapes between ch0_stack and provided roi_mask')
+
         self.ch0_stacks = ch0_stacks
         self.ch1_stacks = ch1_stacks
         self.output_files = output_files
@@ -54,7 +65,8 @@ class RoiCanvasData:
 
         self.other_bgs_dict = bg_dict if bg_dict is not None else dict()
 
-        shifts = np.array([np.array([0, 0], dtype=int) for _ in self.ch0_stacks])
+        if shifts is None:
+            shifts = np.array([np.array([0, 0], dtype=int) for _ in ch0_stacks])
         self.shifts = np.asarray(shifts)
 
         if self.shifts.shape[0] != len(self.ch0_stacks):
@@ -108,7 +120,7 @@ class RoiCanvasData:
         self._selected_gamma = 0.33
         self._selected_roi = 1
         self._selected_view = 'highlight'
-        self._selected_tool = 'draw'
+        self._selected_tool = 'draw' if initial_roi_mask is None else 'select'
         self._selected_size = 1
         self._selected_thresh = 0.3
 
@@ -122,7 +134,13 @@ class RoiCanvasData:
         self.ref_corr_map = None
 
         # Initialize roi_mask
-        self._initial_roi_mask = None
+        if initial_roi_mask is not None:
+            self._initial_roi_mask = initial_roi_mask.copy()
+            self.init_roi_mask(self._initial_roi_mask)
+            print(f"Loaded initial ROI mask with {len(np.unique(self._initial_roi_mask)) - 1} ROIs.")
+        else:
+            self._initial_roi_mask = None
+
 
         self.clean_min_size = 3
         self.clean_connectivity = 2
@@ -420,12 +438,19 @@ class ExtendedAutoRoiGui(RoiCanvasData):
 
         # get infor from dj_wrapper
         table_holder_info = get_roi_canvas_data_from_DJTableHolder(dj_table_holder,field_key,pres_key,)
+        
+        # warn if we have masks but should also compute
+        if do_not_compute_only_visualize is False and table_holder_info['initial_roi_mask'] is not None:
+            print("WARNING: There is a ROI mask in the database, but do_not_compute_only_visualize is False.\
+                  This kind of mixes visualization usage only and compute useage of gui and maybe unexpected behavior")
         self.do_not_compute_only_visualize = do_not_compute_only_visualize 
 
         super().__init__(ch0_stacks=table_holder_info['ch0_stacks'],
                          ch1_stacks=table_holder_info['ch1_stacks'],
                          output_files=table_holder_info['output_files'],
                          pres_names=table_holder_info['pres_names'],
+                         initial_roi_mask=table_holder_info['initial_roi_mask'],
+                        shifts=table_holder_info['shifts'],
                          bg_dict=bg_dict,
                          n_artifact=n_artifact,
                          main_stim_idx=main_stim_idx,
@@ -1675,30 +1700,6 @@ class ExtendedAutoRoiGui(RoiCanvasData):
         condition = stim_condition.split('(')[1].split(')')[0]
         return stim, condition
 
-    def check_databse_for_mask(self) ->None:
-        """Check if there is already a mask in the database for the current field and main stimulus"""
-        field_roi_mask_tab = self.roi_mask_table & self.field_key
-        
-        if len(field_roi_mask_tab) == 0:
-            self.log('No ROI mask found in database')
-            return
-
-        # fetch roi mask from db 
-        roi_mask_new = field_roi_mask_tab.fetch1('roi_mask')
-
-
-        # apply shifts in self.shifts
-        #self.roi_mask_table.RoiMaskPresentation()
-        
-        # visualize it in gui
-        self.init_roi_mask(roi_mask_new)
-        self.update_info()
-        self.update_roi_options()
-        self.draw_current_mask_img(update=True)
-        self.draw_roi_masks_img(update=True)
-        self.set_dangerzone(False)
-        self.set_selected_tool('select')
-
 
 
     def insert_database_and_get_traces(self):
@@ -1939,6 +1940,28 @@ def load_stack_data(files, data_name, alt_name, from_raw_data,
     return ch0_stacks, ch1_stacks, output_files
 
 
+def check_db_for_initial_roi_mask(roi_mask_table, field_key) -> tuple[None,None] | tuple[np.ndarray, list[np.ndarray]]:
+    """Check if there is already a mask in the database for the current field.
+    reutrn roi mask and shifts if found, else None,None.
+    NOTE: roi_masks in dj are in igor format, and I convert them to python format"""
+    from djimaging.utils.mask_format_utils import as_python_format
+
+    field_roi_mask_tab = roi_mask_table & field_key
+
+    if len(field_roi_mask_tab) == 0:
+        return None,None
+
+    # fetch roi mask from db
+    roi_mask_new = field_roi_mask_tab.fetch1('roi_mask')
+    roi_mask_new = as_python_format(roi_mask_new)
+
+    # retrieve the shifts
+    shift_dx,shift_dy = (field_roi_mask_tab.RoiMaskPresentation() & field_key).fetch('shift_dx', 'shift_dy')
+    shifts = [np.array([dx, dy]) for dx, dy in zip(shift_dx, shift_dy,strict=True)]
+
+    return roi_mask_new,shifts
+
+
 def get_roi_canvas_data_from_DJTableHolder(dj_table_holder: DJTableHolder,
                                     field_key=None,
                                     pres_key=None,
@@ -2042,6 +2065,10 @@ def get_roi_canvas_data_from_DJTableHolder(dj_table_holder: DJTableHolder,
             pres_names = [f"stim{i + 1}" for i in range(len(ch0_stacks))]
 
 
+        # check if there already are roi masks for this field
+        initial_roi_mask, shifts = check_db_for_initial_roi_mask(roi_mask_table, field_key)
+
+
         # return all the self.attributes
         return {
             'ch0_stacks': ch0_stacks,
@@ -2054,4 +2081,6 @@ def get_roi_canvas_data_from_DJTableHolder(dj_table_holder: DJTableHolder,
             'high_res_bg_dict': high_res_bg_dict,
             'field_key': field_key,
             'pres_keys': pres_keys,
+            'initial_roi_mask': initial_roi_mask,
+            'shifts': shifts
         }
