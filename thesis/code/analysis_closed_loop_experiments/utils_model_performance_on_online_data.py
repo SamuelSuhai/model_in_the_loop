@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 from typing import Tuple, Optional,Dict
 
 
+
+
 def bring_pred_target_dict_to_array(pred_target_dict:Dict[int,Tuple[np.ndarray,np.ndarray]]) -> Tuple[np.ndarray,np.ndarray]:
     """
     Convert a dictionary of predictions and targets into two numpy arrays.
@@ -75,7 +77,10 @@ def plot_all_neuron_predicted_actual(responses,predictions,time_window=None,figs
 
     return fig
 
-def plot_single_neuron_predicted_actual(target_response,predicted_response,time_window=None,ax =None) -> plt.Axes | Tuple[plt.Axes,float]:
+def plot_single_neuron_predicted_actual(target_response,
+                                        predicted_response,
+                                        time_window=None,ax =None,
+                                        title = None) ->  Tuple[plt.Axes,plt.Figure,float]:
     """"""
     
     assert target_response.shape == predicted_response.shape, f"Response shape {target_response.shape} and model prediction shape {predicted_response.shape} do not match."
@@ -88,15 +93,18 @@ def plot_single_neuron_predicted_actual(target_response,predicted_response,time_
     if time_window is None:
         time_window = (0, predicted_response.shape[0])
     if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 5)) 
+        fig, ax = plt.subplots(figsize=(10, 5))
+    else:
+        fig = ax.figure
     ax.plot(target_response[time_window[0]:time_window[1]], label='Actual', color='blue')
     ax.plot(predicted_response[time_window[0]:time_window[1]], label='Predicted', color='orange')
-    ax.set_title(f'Response vs Prediction. Correlation: {correl:.4f}')
-    ax.set_xlabel('Time')
-    ax.set_ylabel('Response')
+    title = title if title is not None else 'Predicted vs Actual Spike Probability'
+    ax.set_title(title)
+    ax.set_xlabel('Time [frames]')
+    ax.set_ylabel('Spike Probability [a.u.]')
     ax.legend()
 
-    return ax,correl
+    return ax,fig,correl
 
 
 
@@ -137,3 +145,40 @@ def extract_data_from_wrapper(wrapper,pipeline_data_path,cfg):
         **data_loader_kwargs
     )
     return movies_dict, neuron_data_dict, seesion_id, model,dataloader
+
+
+def plot_scatter_correlation(online_neuron_correl_dict: Dict[int,float],
+                             offline_neuron_correl_dict: Dict[int,float],
+                             ax: plt.Axes=None,
+                             title = None) -> tuple[plt.Axes,plt.Figure]:
+    """
+    neuron_correl_dicts contain neuron idx as keys and correlation values as values.
+    Plots a scatterplot with the mean correlation as a dashed line.
+    The two are seperated on the x axis. 
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(5,5))
+    online_neuron_idxs = list(online_neuron_correl_dict.keys())
+    online_correl_values = [online_neuron_correl_dict[idx] for idx in online_neuron_idxs]
+    offline_neuron_idxs = list(offline_neuron_correl_dict.keys())
+    offline_correl_values = [offline_neuron_correl_dict[idx] for idx in offline_neuron_idxs]   
+
+    online_mean = np.mean(online_correl_values)
+    offline_mean = np.mean(offline_correl_values)
+    
+    ax.scatter([0]*len(online_correl_values), online_correl_values, label='Online', color='blue', alpha=0.6)
+    ax.hlines(online_mean, -0.2, 0.2, colors='blue', linestyles='dashed', label=f'Online Mean: {online_mean:.2f}')
+
+    ax.scatter([1]*len(offline_correl_values), offline_correl_values, label='Offline', color='orange', alpha=0.6)
+    ax.hlines(offline_mean, 0.8, 1.2, colors='orange', linestyles='dashed', label=f'Offline Mean: {offline_mean:.2f}')
+    ax.set_xticks([0, 1], labels=['Online', 'Offline'])
+    ax.set_ylim(-0.5, 1.1)
+    title = title if title is not None else 'Online vs Offline Prediceted-Actural Correlation for Neurons'
+    ax.set_title(title)
+    ax.set_ylabel('Correlation Coefficient')
+    
+
+
+
+    ax.legend()
+    return ax, fig
