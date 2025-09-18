@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from typing import Callable, Dict, Tuple, Optional
 import numpy as np
 import pandas as pd
-
+import seaborn as sns
+import matplotlib.pyplot as plt
 import numpy as np
 
 
@@ -91,76 +92,112 @@ def find_row_closest(row: np.ndarray,arr:np.ndarray):
 
 
 
-def find_roi_partner(template_field_traces: pd.DataFrame,match_to_these_field_traces: pd.DataFrame,corr_thresh=0.7,distance_thresh=10):
+def find_roi_partner(online_traces: pd.DataFrame,offline_traces: pd.DataFrame,corr_thresh=0.7,distance_thresh=10,offline_to_online = True):
     """
     Maps the rois in template_field_traces to the rois in match_to_these_field_traces based on highest correlation of their traces and the distance or their roi positions.
     Returns a map from each roi_id in template_field_traces to the roi_id in match_to_these_field_traces
 
     """
     # requires cols: x_pos, y_pos, trace
-    assert all(col in template_field_traces.columns for col in ['x_pos', 'y_pos', 'trace','roi_id']), "template_field_traces must contain x_pos, y_pos, trace columns"
-    assert template_field_traces['field_id'].unique().size == 1, "template_field_traces must contain only one field_id"
+    assert all(col in online_traces.columns for col in ['x_pos', 'y_pos', 'trace','roi_id']), "template_field_traces must contain x_pos, y_pos, trace columns"
+    assert online_traces['field_id'].unique().size == 1, "template_field_traces must contain only one field_id"
+    assert all(col in offline_traces.columns for col in ['x_pos', 'y_pos', 'trace','roi_id']), "template_field_traces must contain x_pos, y_pos, trace columns"
+    assert offline_traces['field_id'].unique().size == 1, "template_field_traces must contain only one field_id"
+
 
     mapping = {}
     corrs = {}
     all_dists = {}
 
 
-    match_to_these_trace_array = np.stack(match_to_these_field_traces['trace'].to_list(),axis = 0)
-    match_to_these_positions_array = match_to_these_field_traces[['x_pos','y_pos']].to_numpy()
+    offline_trace_array = np.stack(offline_traces['trace'].to_list(),axis = 0)
+    match_to_these_positions_array = offline_traces[['x_pos','y_pos']].to_numpy()
 
-    for i,roi_data in template_field_traces.iterrows():
-        roi_id = roi_data['roi_id']
-        roi_trace = roi_data['trace']
-        roi_x = roi_data['x_pos']
-        roi_y = roi_data['y_pos']
+    for i,roi_data in online_traces.iterrows():
+        online_roi_id = roi_data['roi_id']
+        online_roi_trace = roi_data['trace']
+        online_roi_x = roi_data['x_pos']
+        online_roi_y = roi_data['y_pos']
 
         # compare and see what roi_ids in match_to_these_field_traces could match
-        corr_idx, corr = find_row_with_highest_correl(roi_trace,match_to_these_trace_array)
+        target_idx, corr = find_row_with_highest_correl(online_roi_trace,offline_trace_array)
 
-        # get distance to roi_id
-        distance = np.linalg.norm(match_to_these_positions_array[corr_idx] - np.array([roi_x,roi_y]))
+        # # distace
+        # target_idx, distance = find_row_closest(np.array([roi_x,roi_y]),match_to_these_positions_array)
+        # corr = np.corrcoef(roi_trace, match_to_these_trace_array[target_idx])[0, 1]
         
-        corrs[roi_id] = corr
-        all_dists[roi_id] = distance
+        # get distance to roi_id
+        distance = np.linalg.norm(match_to_these_positions_array[target_idx] - np.array([online_roi_x,online_roi_y]))
+
 
         # store mapping if pass criteria
         if corr > corr_thresh and distance < distance_thresh:
-            taget_roi = int(match_to_these_field_traces.iloc[corr_idx]['roi_id'])
+            offline_roi = int(offline_traces.iloc[target_idx]['roi_id'])
 
             # check if already assingled
-            if taget_roi in mapping.values():
-                print(f"Warning: roi_id {roi_id} target roi {taget_roi} already assigned to another roi, skipping...")
+            already_have_offline_roi = offline_roi in mapping.keys() if offline_to_online else offline_roi in mapping.values() 
+
+            if already_have_offline_roi:
+                print(f"warning, already have mapping for offline roi {offline_roi}, skipping assignment for online roi {online_roi_id} with corr {corr:.2f} and distance {distance:.2f}")
                 continue
-            mapping[roi_id] = int(match_to_these_field_traces.iloc[corr_idx]['roi_id'])
+            
+            key = int(offline_roi) if offline_to_online else int(online_roi_id)
+            roi_id_value = int(online_roi_id) if offline_to_online else int(offline_roi)
+            mapping[key] = roi_id_value
+            
+            corrs[key] = corr
+            all_dists[key] = distance
 
         else:
-            mapping[roi_id] = None
-            print(f"Warning: roi_id {roi_id} could not be assigned, max corr {corr:.2f}, distance {distance:.2f}")
+            print(f"Warning: onlnie roi_id {online_roi_id} could not be assigned, max corr {corr:.2f}, distance {distance:.2f}")
+
+    # if we mapp offline to online fill up any missing dict entries with None
+    if offline_to_online:
+        for offline_roi in offline_traces['roi_id']:
+            if int(offline_roi) not in mapping.keys():
+                mapping[int(offline_roi)] = None
+                corrs[int(offline_roi)] = None
+                all_dists[int(offline_roi)] = None
+        
     return mapping, corrs, all_dists
 
 
-def find_field_roi_id_partner(field_traces: pd.DataFrame,base_col_val = 'cl',find_corresponding_in_this_col_val = 'n1',field_id_col = 'field_id',cond1_col = 'cond1'):
+def find_field_roi_id_partner(field_traces: pd.DataFrame,
+                              online_col_val = 'cl', 
+                              offline_col_val = 'n1',
+                              field_id_col = 'field_id',
+                              cond1_col = 'cond1',
+                              offline_to_online = True,):
     """
     Find the roi partner for traces from one field.
     base_col_val is the cond1 value for which we want to find partners in rows that have the cond1 value find_corresponding_in_this_col_val
     """
     assert field_traces[field_id_col].unique().size == 1, "field_traces must contain only one field_id"
-    base_field_traces = field_traces[field_traces[cond1_col] == base_col_val]
-    match_to_field_traces = field_traces[field_traces[cond1_col] == find_corresponding_in_this_col_val]
+    online_trace_df = field_traces[field_traces[cond1_col] == online_col_val]
+    offline_trace_df = field_traces[field_traces[cond1_col] == offline_col_val]
 
-    mapping, corrs, all_dists = find_roi_partner(base_field_traces,match_to_field_traces)
+    mapping, corrs, all_dists = find_roi_partner(
+        online_traces=online_trace_df,
+        offline_traces=offline_trace_df,
+        offline_to_online=offline_to_online
+    )
     return mapping, corrs,all_dists
 
     
 
-def cond1_to_cond1_celltype(field_celltypes_df, traces_df, online_col_val = 'cl',offline_col_val = 'n1',field_id_col = 'field_id',cond1_col = 'cond1',stim_name = 'gChirp', quality_df = None,reference_col_val = 'n1'):
+def cond1_to_cond1_celltype(field_celltypes_df, 
+                            traces_df, 
+                            online_col_val = 'cl',
+                            offline_col_val = 'n1',
+                            field_id_col = 'field_id',
+                            cond1_col = 'cond1',
+                            stim_name = 'gChirp',
+                            quality_df = None,
+                            offline_to_online = True,):
     """
     Given a dataframe with celltypes for online rois, find the corresponding offline roi celltypes if reference_col_val is equal to online_col_val, otherwise 
     maps the offline rois to the online ones
     """
-    if reference_col_val not in (online_col_val,offline_col_val):
-        raise ValueError("reference_col_val must be either online_col_val or offline_col_val")
 
     all_field_ids = field_celltypes_df[field_id_col].unique()
     assert len(all_field_ids) == 1, "field_celltypes_df must contain only one field_id"
@@ -169,9 +206,14 @@ def cond1_to_cond1_celltype(field_celltypes_df, traces_df, online_col_val = 'cl'
     stim_mask = traces_df['stim_name'] == stim_name
     field_traces = traces_df[(traces_df[field_id_col] == field_id) & stim_mask]
     
-    mapping, online_offline_corrs,all_dists = find_field_roi_id_partner(field_traces,base_col_val= online_col_val,
-                                                                            find_corresponding_in_this_col_val = offline_col_val,
-                                                                            field_id_col = field_id_col,cond1_col= cond1_col)
+    mapping, corrs,all_dists = find_field_roi_id_partner(
+        field_traces=field_traces,
+        online_col_val=online_col_val,
+        offline_col_val=offline_col_val,
+        field_id_col=field_id_col,
+        cond1_col=cond1_col,
+        offline_to_online=offline_to_online
+    )
     
     # first get onlz online celltypes 
     online_celltypes = field_celltypes_df[field_celltypes_df['cond1'] == online_col_val][['roi_id','celltype','max_confidence',field_id_col]].rename(columns={'roi_id':'online_roi_id','celltype':'online_cell_type','max_confidence':'online_max_confidence'})
@@ -183,32 +225,35 @@ def cond1_to_cond1_celltype(field_celltypes_df, traces_df, online_col_val = 'cl'
 
 
     # map the roi_ids to each tother
-    if reference_col_val == online_col_val:
+    if not offline_to_online:
+        # mapping online to offline in data frame
         out_df = online_celltypes
         
         # add offline data 
         out_df["offline_roi_id"] = out_df['online_roi_id'].map(mapping)
-        out_df["correlation"] = out_df['online_roi_id'].map(online_offline_corrs)
+        out_df["correlation"] = out_df['online_roi_id'].map(corrs)
         out_df["distance"] = out_df['online_roi_id'].map(all_dists)
         out_df = out_df.merge(offline_celltypes[['offline_roi_id','offline_cell_type','offline_max_confidence']],on='offline_roi_id',how='left')
 
     else:
+        # mapping offline to online in data frame
         out_df = offline_celltypes
 
         # add online data
         out_df["online_roi_id"] = out_df['offline_roi_id'].map(mapping)
-        out_df["correlation"] = out_df['offline_roi_id'].map(online_offline_corrs)
+        out_df["correlation"] = out_df['offline_roi_id'].map(corrs)
         out_df["distance"] = out_df['offline_roi_id'].map(all_dists)
         out_df = out_df.merge(online_celltypes[['online_roi_id','online_cell_type','online_max_confidence']],on='online_roi_id',how='left')
 
-
+    
     # find quality indices for online rois
     if quality_df is not None:
         field_quality_online = quality_df[(quality_df[field_id_col] == field_id) & (quality_df['cond1'] == online_col_val)]
         field_quality_offline = quality_df[(quality_df[field_id_col] == field_id) & (quality_df['cond1'] == offline_col_val)]
 
         # add qidxs
-        if reference_col_val == online_col_val:
+        if  not offline_to_online:
+            # join on online roi id
             out_df = out_df.merge(field_quality_online[['roi_id','mb_qidx','chirp_qidx']].rename(columns={'roi_id':'online_roi_id','mb_qidx':'online_mb_qidx','chirp_qidx':'online_chirp_qidx'}),on='online_roi_id',how='left')
         else:
             out_df = out_df.merge(field_quality_offline[['roi_id','mb_qidx','chirp_qidx']].rename(columns={'roi_id':'offline_roi_id','mb_qidx':'offline_mb_qidx','chirp_qidx':'offline_chirp_qidx'}),on='offline_roi_id',how='left')
@@ -218,7 +263,12 @@ def cond1_to_cond1_celltype(field_celltypes_df, traces_df, online_col_val = 'cl'
 
 def get_all_cond1_to_cond1_celltype(all_celltypes_df,
                                      traces_df, 
-                                     quality_df = None, online_col_val = 'cl',offline_col_val = 'n1',field_id_col = 'field_id',cond1_col = 'cond1', reference_col_val = 'n1'):
+                                     quality_df = None, 
+                                    online_col_val = 'cl',
+                                    offline_col_val = 'n1',
+                                    field_id_col = 'field_id',
+                                    cond1_col = 'cond1', 
+                                    offline_to_online = True,):
     """
     Loops over field_ids in the entire celltype df and then calls online2offline_celltype and concatenates the results to one df with some sanity checks at end.
     """
@@ -232,11 +282,12 @@ def get_all_cond1_to_cond1_celltype(all_celltypes_df,
                                                offline_col_val = offline_col_val,
                                                field_id_col = field_id_col,
                                                cond1_col = cond1_col,
-                                               reference_col_val= reference_col_val)
+                                               offline_to_online = offline_to_online)
         out_dfs.append(field_out_df)
     out_df = pd.concat(out_dfs,ignore_index=True)
     
     # sanity checks: no missing rois in total
+    reference_col_val = offline_col_val if offline_to_online else online_col_val
     assert sum(all_celltypes_df['cond1'] == reference_col_val) == len(out_df)
 
     # same nr of rois as for con1 value for each field 
@@ -253,7 +304,10 @@ def get_all_cond1_to_cond1_celltype(all_celltypes_df,
 
 def prepare_celltype_data(df, offline_col='offline_cell_type', online_col='online_cell_type',
                           max_type=32, chirp_qidx_threshold=None, mb_qidx_threshold=None,
-                          chirp_percentile=None, mb_percentile=None):
+                          chirp_percentile=None, 
+                          mb_percentile=None,
+                          nan_strategy='drop',
+                        ):
     """
     Prepare cell type data for confusion matrix analysis, with optional quality filtering.
     
@@ -275,6 +329,8 @@ def prepare_celltype_data(df, offline_col='offline_cell_type', online_col='onlin
         Percentile for automatic chirp threshold selection (between 0 and 100)
     mb_percentile : float, optional
         Percentile for automatic moving bar threshold selection (between 0 and 100)
+    nan_strategy : str
+        Strategy for handling NaN values in cell type columns ('drop' to remove, 'group' to group into a separate category)
         
     Returns:
     --------
@@ -285,6 +341,9 @@ def prepare_celltype_data(df, offline_col='offline_cell_type', online_col='onlin
     """
     import pandas as pd
     import numpy as np
+
+
+    assert nan_strategy in ['drop','group']
     
     # Assert that user doesn't specify both percentile and threshold for the same metric
     if chirp_percentile is not None and chirp_qidx_threshold is not None:
@@ -295,6 +354,12 @@ def prepare_celltype_data(df, offline_col='offline_cell_type', online_col='onlin
     
     # Create a copy to avoid modifying the original DataFrame
     df_copy = df.copy()
+
+
+    # drop nans if requested
+    if nan_strategy == 'drop':
+        df_copy = df_copy.dropna(subset=[offline_col, online_col])
+
     
     # Calculate and apply percentile-based thresholds if specified
     applied_thresholds = {}
@@ -325,12 +390,17 @@ def prepare_celltype_data(df, offline_col='offline_cell_type', online_col='onlin
         df_copy = df_copy[df_copy['mb_qidx'] >= mb_qidx_threshold]
         if 'mb_qidx' not in applied_thresholds:
             applied_thresholds['mb_qidx'] = mb_qidx_threshold
+
+    # group nans 
     
     # Group cell types > max_type into a single category
     df_copy[offline_col + '_grouped'] = df_copy[offline_col].apply(
-        lambda x: x if x <= max_type else max_type + 1)
+        lambda x: x if (not pd.isna(x) and x <= max_type) else (max_type + 1 if not pd.isna(x) else np.nan))
     df_copy[online_col + '_grouped'] = df_copy[online_col].apply(
-        lambda x: x if x <= max_type else max_type + 1)
+        lambda x: x if  (not pd.isna(x) and x <= max_type) else (max_type + 1 if not pd.isna(x) else np.nan))
+    if nan_strategy == 'group':
+        df_copy[offline_col + '_grouped'] = df_copy[offline_col + '_grouped'].fillna(max_type + 2)
+        df_copy[online_col + '_grouped'] = df_copy[online_col + '_grouped'].fillna(max_type + 2)
     
     return df_copy, applied_thresholds
 
@@ -374,6 +444,12 @@ def create_confusion_matrices(df, offline_col_grouped, online_col_grouped, max_t
             confusion_counts.loc[val] = 0
         if val not in confusion_counts.columns:
             confusion_counts[val] = 0
+
+    has_grouped_nan = ((df[offline_col_grouped] == max_type + 2) | (df[online_col_grouped] == max_type + 2)) .any()
+    if has_grouped_nan:
+        # add extra entry for online (columns)
+        if (max_type + 2) not in confusion_counts.columns:
+            confusion_counts.loc[max_type + 2] = 0
     
     # Sort both axes
     confusion_counts = confusion_counts.sort_index().sort_index(axis=1)
@@ -408,7 +484,7 @@ def create_confusion_matrices(df, offline_col_grouped, online_col_grouped, max_t
 
 
 def plot_confusion_matrix(matrix, is_counts=True, max_type=32, figsize=(20, 16), 
-                          cmap='Blues', annot_fmt='.2f', applied_thresholds=None):
+                          cmap='Blues', annot_fmt='.2f', hide_zero=True, applied_thresholds=None,**heatmap_kws):
     """
     Plot a single confusion matrix (either counts or probabilities).
     
@@ -436,8 +512,7 @@ def plot_confusion_matrix(matrix, is_counts=True, max_type=32, figsize=(20, 16),
     ax : matplotlib.axes.Axes
         The axes object
     """
-    import matplotlib.pyplot as plt
-    import seaborn as sns
+
     
     # Create a figure
     fig, ax = plt.subplots(1, 1, figsize=figsize)
@@ -446,9 +521,14 @@ def plot_confusion_matrix(matrix, is_counts=True, max_type=32, figsize=(20, 16),
     fmt = 'd' if is_counts else annot_fmt
     label = 'Count' if is_counts else 'Probability'
     
+    if hide_zero:
+        mask = matrix < 0.01 if not is_counts else matrix == 0
+        heatmap_kws['mask'] = mask
+
+    
     # Plot the matrix
     sns.heatmap(matrix, annot=True, fmt=fmt, cmap=cmap, 
-                ax=ax, cbar_kws={'label': label})
+                ax=ax, cbar_kws={'label': label},**heatmap_kws)
     
     # Update labels
     ax.set_xlabel('Online Cell Type')
@@ -456,11 +536,10 @@ def plot_confusion_matrix(matrix, is_counts=True, max_type=32, figsize=(20, 16),
     
     # Set title
     if is_counts:
-        title = 'Cell Type Classification Confusion Matrix (Counts)'
         total_cells = matrix.sum().sum()
-        title += f'\nTotal: {int(total_cells)} cells'
+        title = f'\nTotal: {int(total_cells)} cells'
     else:
-        title = 'Cell Type Classification Conditional Probability\n(P(online type | offline type))'
+        title = 'P(online type | offline type)'
     
     if applied_thresholds:
         threshold_str = ', '.join([f"{k}: {v:.3f}" for k, v in applied_thresholds.items()])
@@ -468,13 +547,12 @@ def plot_confusion_matrix(matrix, is_counts=True, max_type=32, figsize=(20, 16),
     
     ax.set_title(title)
     
-    # Rename the last tick label to ">32"
-    xticks = list(range(1, max_type + 1)) + [f">{max_type}"]
-    yticks = list(range(1, max_type + 1)) + [f">{max_type}"]
-    ax.set_xticklabels(xticks)
-    ax.set_yticklabels(yticks)
+    # Rename the last tick label to "AC" or "Missed" if there are grouped types
+    xticks = list(range(1, max_type + 1)) + ["AC"] + (["Missed"] if matrix.columns.max() == max_type + 2 else [])
+    yticks = list(range(1, max_type + 1)) + ["AC"] + (["Missed"] if matrix.index.max() == max_type + 2 else [])
+    ax.set_xticklabels(xticks, rotation=45, ha='center')
+    ax.set_yticklabels(yticks,rotation=45, va='center') 
     
-    plt.tight_layout()
     
     return fig, ax
 
@@ -483,7 +561,8 @@ def plot_celltype_confusion_matrix(df, offline_col='offline_cell_type', online_c
                                   max_type=32, figsize=(20, 16), cmap='Blues', annot_fmt='.2f',
                                   plot_counts=True, save_path=None,
                                   chirp_qidx_threshold=None, mb_qidx_threshold=None,
-                                  chirp_percentile=None, mb_percentile=None):
+                                  chirp_percentile=None, mb_percentile=None,nan_strategy='drop',
+                                  heatmap_kws: Dict = {}):
     """
     Plot a confusion matrix for cell type classifications with optional quality filtering.
     
@@ -527,7 +606,8 @@ def plot_celltype_confusion_matrix(df, offline_col='offline_cell_type', online_c
     df_prepared, applied_thresholds = prepare_celltype_data(
         df, offline_col, online_col, max_type,
         chirp_qidx_threshold, mb_qidx_threshold,
-        chirp_percentile, mb_percentile
+        chirp_percentile, mb_percentile,
+        nan_strategy=nan_strategy,
     )
     
     # Step 2: Create the confusion matrices
@@ -547,7 +627,8 @@ def plot_celltype_confusion_matrix(df, offline_col='offline_cell_type', online_c
         figsize=figsize, 
         cmap=cmap, 
         annot_fmt=annot_fmt,
-        applied_thresholds=applied_thresholds
+        applied_thresholds=applied_thresholds,
+        **heatmap_kws
     )
     
     if save_path:
@@ -564,6 +645,118 @@ def plot_celltype_confusion_matrix(df, offline_col='offline_cell_type', online_c
 #     save_path='celltype_confusion_matrix.png'
 # )
 
+def plot_percentage_gain(results_df: pd.DataFrame,
+                         celltype_col: str = 'target_type_idx',
+                         percentage_gain_col: str = 'percentage_gain',
+                         figsize = (12,7))-> Tuple[plt.Figure, plt.Axes]:
+    """
+    """
 
-def plot_online_offline_field_scalar(online_values,offline_values,title = "",ax_tick_labels=None):
-    pass
+
+
+   # Create a copy and add celltype column (1-indexed)
+    df = results_df.copy()
+    df["celltype"] = df[celltype_col] + 1
+    
+    # Create figure and axis
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    
+    # Plot percentage gain line
+    sns.lineplot(
+        data=df, 
+        x='celltype', 
+        y=percentage_gain_col,
+        marker='o',
+        markersize=8,
+        color='#1f77b4',
+        linewidth=2.5,
+        ax=ax
+    )
+    
+    # Add horizontal dotted line at y=0
+    ax.axhline(y=0, color='black', linestyle=':', linewidth=1.5, alpha=0.7)
+    
+    # Fill areas above and below zero
+    x = df['celltype'].values
+    y = df[percentage_gain_col].values
+    
+    ax.fill_between(x, y, 0, where=(y >= 0), 
+                   alpha=0.2, color='green', interpolate=True)
+    ax.fill_between(x, y, 0, where=(y < 0), 
+                   alpha=0.2, color='red', interpolate=True)
+    
+    # Ensure there's an x-tick for each cell type
+    ax.set_xticks(df['celltype'].unique())
+    
+    # Add grid for better readability
+    ax.grid(True, linestyle='--', alpha=0.7)
+    
+    # Set labels and title
+    ax.set_xlabel('Cell Type')
+    ax.set_ylabel('Yield Increase [%]')
+    
+      
+    # Prettify the plot
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    return fig,ax
+
+
+
+
+
+
+
+
+
+
+def add_terciles(quality_pivot):
+    quality_pivot['n1_tercile'] = pd.qcut(quality_pivot['n1'], q=[0,1/3,2/3,1], labels=["lower","middle","upper"])
+    quality_pivot['cl_tercile'] = pd.qcut(quality_pivot['cl'], q=[0,1/3,2/3,1], labels=["lower","middle","upper"])
+    return quality_pivot
+
+
+def plot_ballpark_quality_contingency(quality_pivot):
+    
+    df = quality_pivot.copy()
+    # add terciles
+    df = add_terciles(df)
+    
+    counts_crosstab = pd.crosstab(df['n1_tercile'],df['cl_tercile'],rownames=['Offline Quality'],colnames=['Online Quality'])
+    prob_crosstab = counts_crosstab.div(counts_crosstab.sum(axis=1), axis=0)
+    
+    fig,ax = plt.subplots(1,1)
+    sns.heatmap(counts_crosstab, ax =ax,annot=True, fmt=".2f", cmap="Blues",cbar_kws={'label': "Count"})
+    
+    ax.set_xlabel('Online Quality')
+    ax.set_ylabel('Offline Quality')
+    ax.set_title(f'Total: {len(df)} fields')
+
+    
+    return fig,ax
+
+def plot_quality_scatter(quality_pivot):
+ 
+    fig,ax = plt.subplots()
+    xs = quality_pivot['cl']
+    ys = quality_pivot['n1']
+
+    ax.scatter(xs, ys, alpha=0.7)
+
+    max_val = max(ys.max(), xs.max())
+    min_val = min(ys.min(), xs.min())
+    ax.plot([min_val, max_val], [min_val, max_val], 'k--', alpha=0.5)
+
+    ax.set_xlabel('Offline Quality')
+    ax.set_ylabel('Online Quality')
+
+    plt.axis('square')
+    plt.xlim(min_val-0.05, max_val+0.05)
+    plt.ylim(min_val-0.05, max_val+0.05)
+
+    # remove 
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    return fig,ax
