@@ -91,7 +91,7 @@ class DJTableHolder:
         
         
         from model_in_the_loop.core.dj_schemas.full_mitl_schema import (
-                UserInfo, Experiment, OpticDisk,RelativeFieldLocation, RelativeRoiLocation,
+                UserInfo, Experiment, OpticDisk,RelativeFieldLocation, RelativeRoiLocationWrtField,RelativeRoiLocation,
                 Field, Stimulus, RoiMask, Roi, Traces,
                 Presentation, RawDataParams, PreprocessParams, PreprocessTraces,
                 Snippets, Averages, ChirpQI, OsDsIndexes,
@@ -117,6 +117,7 @@ class DJTableHolder:
             'OpticDisk': OpticDisk,
             'RelativeFieldLocation': RelativeFieldLocation,
             'RelativeRoiLocation': RelativeRoiLocation,
+            'RelativeRoiLocationWrtField':RelativeRoiLocationWrtField,
             'Stimulus': Stimulus,
             'RoiMask': RoiMask,
             'Roi': Roi,

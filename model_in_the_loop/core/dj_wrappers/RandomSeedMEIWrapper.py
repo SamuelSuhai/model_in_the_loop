@@ -308,22 +308,19 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         if progress_callback is not None:
             progress_callback(0)
 
-        # Traces
-        restricted_traces = self.dj_table_holder("CascadeTraces")() & complete_restriction
-        if len(restricted_traces) == 0:
-            # populate the traces table
-            self.dj_table_holder("CascadeTraces")().populate(complete_restriction, processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
-            progress += 15
-            if progress_callback is not None:
-                progress_callback(progress)
-            
-            
-            # spikes: no restriction, since the trstriction is in traces already and somehow
-            # it has different primary keys
-            self.dj_table_holder("CascadeSpikes")().populate( processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
-            progress += 15
-            if progress_callback is not None:
-                progress_callback(progress)
+        # populate the traces table
+        self.dj_table_holder("CascadeTraces")().populate(complete_restriction, processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+        progress += 15
+        if progress_callback is not None:
+            progress_callback(progress)
+        
+        
+        # spikes: no restriction, since the trstriction is in traces already and somehow
+        # it has different primary keys
+        self.dj_table_holder("CascadeSpikes")().populate( processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+        progress += 15
+        if progress_callback is not None:
+            progress_callback(progress)
     
 
 

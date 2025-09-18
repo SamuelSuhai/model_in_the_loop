@@ -1,6 +1,6 @@
 .vscode
 thesis/data/recordings
-thesis/data/online_quality_and_celltype/data_dj_format
+thesis/data/online_quality_and_celltype/*
 model_in_the_loop/output/*
 model_in_the_loop/quick_testing
 model_in_the_loop/data/online_computed_data/*

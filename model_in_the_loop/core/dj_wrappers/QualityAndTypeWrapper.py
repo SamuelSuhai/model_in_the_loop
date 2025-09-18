@@ -38,23 +38,17 @@ class QualityAndTypeWrapper(DJComputeWrapper):
         """
         Populate the ChirpQI and OsDsIndexes tables for quality metrics.
         """
-        if len(self.dj_table_holder('ChirpQI')() & field_key) == 0:
+        self.dj_table_holder('ChirpQI')().populate(field_key,display_progress=True, processes=self.dj_table_holder.multiprocessing_threads)
             
-            self.dj_table_holder('ChirpQI')().populate(display_progress=True, processes=self.dj_table_holder.multiprocessing_threads)
-            
-        if len(self.dj_table_holder('OsDsIndexes')() & field_key) == 0:
-            self.dj_table_holder('OsDsIndexes')().populate(display_progress=True, processes=self.dj_table_holder.multiprocessing_threads)
+   
+        self.dj_table_holder('OsDsIndexes')().populate(field_key,display_progress=True, processes=self.dj_table_holder.multiprocessing_threads)
 
     def add_celltype_assignments(self, field_key) -> None:
         """
         Populate the Baden16Traces and CelltypeAssignment tables for cell type assignments.
         """
-
-        if len(self.dj_table_holder('Baden16Traces')() & field_key) == 0:
-            self.dj_table_holder('Baden16Traces')().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
-        
-        if len(self.dj_table_holder('CelltypeAssignment')() & field_key) == 0:
-            self.dj_table_holder('CelltypeAssignment')().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+        self.dj_table_holder('Baden16Traces')().populate(field_key, processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+        self.dj_table_holder('CelltypeAssignment')().populate(field_key, processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
 
     def compute_analysis(self, field_key = {},progress_callback: Optional[Callable]  = None) -> None:
         """
@@ -287,14 +281,13 @@ class QualityAndTypeWrapper(DJComputeWrapper):
         Check if the required tables are populated in the database.
         """
         for table_name in self.requires_tables:
+            
+            # populate the necessary tables
+            self.dj_table_holder(table_name)().populate(field_key,processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
             if len(self.dj_table_holder(table_name)() & field_key) == 0:
-                
-                # populate the necessary tables
-                self.dj_table_holder(table_name)().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
-                if len(self.dj_table_holder(table_name)() & field_key) == 0:
-                    raise ValueError(f"Required table {table_name} is empty for the given field_key after population. \
-                                     Please ensure that the prerequisite data is available. If you enconter this in the GUI, make sure you \
-                                     Hit insert to db first.")
+                raise ValueError(f"Required table {table_name} is empty for the given field_key after population. \
+                                    Please ensure that the prerequisite data is available. If you enconter this in the GUI, make sure you \
+                                    Hit insert to db first.")
 
     def get_roi2rgb_and_alpha_255_map(self,
                                       field_key: Dict[str, Any],

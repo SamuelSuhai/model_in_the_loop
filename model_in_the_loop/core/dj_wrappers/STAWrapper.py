@@ -73,10 +73,9 @@ class STAWrapper(DJComputeWrapper):
         complete_restriction = get_rois_in_field_restriction_str(field_key, roi_id_subset)
 
         for table_name in self.requires_tables:
-            if len(self.dj_table_holder(table_name)() & complete_restriction) == 0:
-                
-                # populate the necessary tables
-                self.dj_table_holder(table_name)().populate(complete_restriction,processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+            
+            # populate the necessary tables
+            self.dj_table_holder(table_name)().populate(complete_restriction,processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
     
     def get_roi_ids_passing_criterion(self, 
                                       field_key: Dict[str, Any], 
