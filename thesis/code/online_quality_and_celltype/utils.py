@@ -12,7 +12,7 @@ import numpy as np
 
 
 ####################################################################################################### DATA MANIPULATION AND COMPUTATION ######################################################
-def add_field_id_col(df: pd.DataFrame) -> pd.DataFrame:
+def add_field_id_col(df: pd.DataFrame) -> None:
     """
     Adds inplace a field_id column to the dataframe that uniquely identifies a field (WITHOUT COND1)
     """
@@ -654,53 +654,48 @@ def plot_percentage_gain(results_df: pd.DataFrame,
 
 
 
-   # Create a copy and add celltype column (1-indexed)
+
     df = results_df.copy()
     df["celltype"] = df[celltype_col] + 1
+    
+    # Sort by celltype to ensure correct order
+    df = df.sort_values('celltype')
     
     # Create figure and axis
     fig, ax = plt.subplots(1, 1, figsize=figsize)
     
-    # Plot percentage gain line
-    sns.lineplot(
-        data=df, 
-        x='celltype', 
-        y=percentage_gain_col,
-        marker='o',
-        markersize=8,
-        color='#1f77b4',
-        linewidth=2.5,
-        ax=ax
+    # Create bar colors based on percentage gain
+    bar_colors = ['green' if gain >= 0 else 'red' for gain in df[percentage_gain_col]]
+    
+    # Plot percentage gain as bars
+    bars = ax.bar(
+        df['celltype'], 
+        df[percentage_gain_col],
+        color=bar_colors,
+        alpha=0.7,
+        width=0.7
     )
     
     # Add horizontal dotted line at y=0
     ax.axhline(y=0, color='black', linestyle=':', linewidth=1.5, alpha=0.7)
     
-    # Fill areas above and below zero
-    x = df['celltype'].values
-    y = df[percentage_gain_col].values
-    
-    ax.fill_between(x, y, 0, where=(y >= 0), 
-                   alpha=0.2, color='green', interpolate=True)
-    ax.fill_between(x, y, 0, where=(y < 0), 
-                   alpha=0.2, color='red', interpolate=True)
-    
     # Ensure there's an x-tick for each cell type
     ax.set_xticks(df['celltype'].unique())
     
     # Add grid for better readability
-    ax.grid(True, linestyle='--', alpha=0.7)
+    ax.grid(True, linestyle='--', alpha=0.7, axis='y')
     
     # Set labels and title
     ax.set_xlabel('Cell Type')
     ax.set_ylabel('Yield Increase [%]')
     
-      
+
+    
     # Prettify the plot
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-
-    return fig,ax
+    
+    return fig, ax
 
 
 
