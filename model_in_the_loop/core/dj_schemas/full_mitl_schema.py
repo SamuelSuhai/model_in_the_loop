@@ -219,7 +219,7 @@ class OpenRetinaHoeflingFormatTemplate(dj.Manual):
         
         for table in [qi_table, celltype_table]:
             if len(table) == 0:
-                raise ValueError(f"Table {table.__class__.__name__} is empty. Please check the database for the required data.")
+                raise ValueError(f"Table quality or type is empty. Please check the database for the required data.")
    
         # combine data
         result = (

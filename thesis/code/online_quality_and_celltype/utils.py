@@ -91,6 +91,31 @@ def find_row_closest(row: np.ndarray,arr:np.ndarray):
     return closest_index, closest_value
 
 
+def fetch_traces_df(dj_table_holder):
+    from model_in_the_loop.core.dj_schemas.full_mitl_schema import RelativeRoiLocationWrtField, RelativeRoiLocation
+    RelativeRoiLocationWrtField().populate()
+    traces_df = (dj_table_holder("Traces")() * RelativeRoiLocationWrtField().proj(**{"x_pos": "relx_wrt_field","y_pos":"rely_wrt_field",})).fetch(as_dict=True)
+    traces_df = pd.DataFrame(traces_df)
+    return traces_df
+
+
+def find_roi_partner_highest_correl(online_traces: np.ndarray, offline_traces: np.ndarray):
+    """
+    Given two arrays of traces, finds for each trace in online_traces the index of the trace in offline_traces with highest correlation
+    Returns a list of indices and a list of correlations
+    """
+    assert len(online_traces.shape) == 2, "online_traces must be 2D"
+    assert len(offline_traces.shape) == 2, "offline_traces must be 2D"
+    assert online_traces.shape[1] == offline_traces.shape[1], "online_traces and offline_traces must have the same number of columns"
+
+    indices = []
+    corrs = []
+    for i in range(online_traces.shape[0]):
+        idx, corr = find_row_with_highest_correl(online_traces[i], offline_traces)
+        indices.append(idx)
+        corrs.append(corr)
+    return indices, corrs
+
 
 def find_roi_partner(online_traces: pd.DataFrame,offline_traces: pd.DataFrame,corr_thresh=0.7,distance_thresh=10,offline_to_online = True):
     """

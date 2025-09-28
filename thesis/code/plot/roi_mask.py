@@ -7,10 +7,10 @@ def plot_roi_mask_on_stack(ax,
                            roi_mask, 
                            ch_average, 
                            roi_ids, 
-                           gamma=0.5,
-                            upscale=5,
-                            roi_color=(1,0,0)
-                            roi_alpha = 0.2):
+                           gamma=0.4,
+                            upscale=2,
+                            roi_color=(1,0,0),
+                            roi_alpha = 0.5):
 
     image = ch_average.copy()
     w,h = image.shape[0], image.shape[1]
