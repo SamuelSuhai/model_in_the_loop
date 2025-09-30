@@ -155,6 +155,8 @@ def generate_presentation_location_order(x_pos: List[float],
 
     # return permutation of indices
     ordering_idxs = path
+
+    assert len(ordering_idxs) == len(x_pos) == len(y_pos), "output length mismatch in ROI stim order generation"
     return ordering_idxs
 
 
@@ -254,7 +256,9 @@ def get_roi_query_expression(roi_ids: List[int],) -> str:
         raise ValueError("roi_ids list is empty.")
     return _str
 
-def transform_to_qdspy_coord(stimulus_table,all_x_pix: List[float], all_y_pix: List[float]) -> Tuple[List[float],List[float]]:
+def transform_to_qdspy_coord(stimulus_table,
+                             all_x_pix: List[float], 
+                             all_y_pix: List[float]) -> Tuple[List[float],List[float]]:
     """
     transforms indices of dense noise to QDSpy coordinates in microns.
     x_pix values are AXIS 0 in DENSE NOISE 
