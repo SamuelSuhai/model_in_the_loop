@@ -200,7 +200,6 @@ class LandMEIWrapper(DJComputeWrapper):
         self.quality_filtering = cfg.quality_filtering
         self.save_dir_parent = os.path.join(cfg.paths.repo_directory,
                                             "model_in_the_loop/data/online_computed_data" )
-        self.log_dir = os.path.join(cfg.paths.repo_directory,"model_in_the_loop/outputs/logs")
 
         self.colors = plt.cm.nipy_spectral(np.linspace(0, 1,2))
 
@@ -784,9 +783,9 @@ class LandMEIWrapper(DJComputeWrapper):
 
         # map roi_id to model neuron idx
         self.roi2readout_idx_wmeis = {roi:idx for roi,idx in self.roi_ids2readout_idx.items() if idx in self.neuron_idxs_passing_filter}
-        log(f"{self.roi2readout_idx_wmeis=}",self.log_dir)
+        log(f"{self.roi2readout_idx_wmeis=}")
         self.readout_idx_wmei2rois = {idx:roi for roi,idx in self.roi2readout_idx_wmeis.items()}
-        log(f"{self.readout_idx_wmei2rois=}",self.log_dir)
+        log(f"{self.readout_idx_wmei2rois=}")
 
         
         ## center the readouts            

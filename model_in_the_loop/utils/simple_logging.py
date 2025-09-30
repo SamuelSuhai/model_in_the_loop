@@ -20,7 +20,12 @@ def time_it(func: Callable[..., Any],eval_folder) -> Callable[..., Any]:
         return out
     return wrapper
 
-def log(msg: str,online_experiment_dir) -> None:
+def log(msg: str,online_experiment_dir = None) -> None:
+    
+    if online_experiment_dir is None:
+        repo_dir = os.environ.get("MITL_REPO_DIRECTORY",os.getcwd())
+        online_experiment_dir = os.path.join(repo_dir,"model_in_the_loop/outputs/logs")
+    
     day_str = datetime.datetime.now().strftime("%Y-%m-%d")
     
     # add folder and file if they dont exists

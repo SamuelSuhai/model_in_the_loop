@@ -7,33 +7,27 @@ import cv2
 import os
 import yaml
 from openretina.models.core_readout import BaseCoreReadout
+from openretina.data_io.hoefling_2024.constants import pre_normalisation_values_18x16
 from model_in_the_loop.utils.simple_logging import log
 
-# constants 
-NORM_DICT = {'norm_mean': 36.979288270899204, 'norm_std': 36.98463253226166}
 
-
-def extract_selected_meis(rois_seed: List[Tuple[int,int]],
+def extract_selected_meis(roi_id2mei_ids: Dict[int,List[str]],
                           mei_data_container : pd.DataFrame,
                         ) -> Dict[str,torch.Tensor]:
 
     """
+    for each mei_id, that we are using it gets the tensor in mei_data_container.
+    returns dict where key is mei_id and value is tensor
 
     """    
-    selected_meis = {}
-    for roi_id, seed in rois_seed:
-        query = (mei_data_container['roi_id'] == roi_id) & (mei_data_container['seed'] == seed)
-        matching_rows = mei_data_container[query]
-        
-        if len(matching_rows) != 1:
-            raise ValueError(f"MEI for roi_id {roi_id} and seed {seed} not found in mei_data_container.")
-         
-        mei = matching_rows.iloc[0]['mei']
-        unique_id = f"roi_{roi_id}_seed_{seed}"
-        assert matching_rows.iloc[0]['mei_id'] == unique_id, f"Mismatch in unique_id {unique_id} and mei_id {matching_rows.iloc[0]['mei_id']}."           
-        selected_meis[unique_id] = mei
+    mei_ids_list_of_lists = list(roi_id2mei_ids.values())
+    all_mei_ids = [item for sublist in mei_ids_list_of_lists for item in sublist]
+    all_unique_mei_ids = list(set(all_mei_ids))
 
-    return selected_meis                          
+    container_subset = mei_data_container[mei_data_container['mei_id'].isin(all_unique_mei_ids)]
+    id_mei = { mei_id: mei for i,(mei_id, mei) in container_subset[["mei_id","mei"]].iterrows()}
+
+    return id_mei                          
 
 
 def create_all_mei_tensor(meis: List[torch.Tensor],
@@ -173,10 +167,12 @@ def put_mei_back_to_original_space(mei: torch.Tensor,
     Puts the stimulus  back to the original space using the provided statistics.
     If no statistics are provided, it simply maps the tensor to [0, 255].
     """
-    if norm_dict is not None:
+    assert mei.ndim == 4
 
-        # revert normalization
-        mei = mei * mei_sd_scale_factor * norm_dict["norm_std"] + norm_dict["norm_mean"]
+    if norm_dict is not None:
+        
+        for channel_idx in [0,1]:
+            mei[channel_idx] = mei[channel_idx] * mei_sd_scale_factor * norm_dict[f"channel_{channel_idx}_std"] + norm_dict[f"channel_{channel_idx}_mean"]
 
         # clip to [0, 255]
         torch.clamp(mei,min = 0, max= 255, out=mei)
@@ -343,7 +339,7 @@ def extract_rf_means_from_selected_rois(roi_ids: List[int],
 
     return all_x_um, all_y_um,roi_order
 
-def upsample_meis(meis: List [torch.Tensor] | torch.Tensor,
+def spatial_upsample_meis(meis: List [torch.Tensor] | torch.Tensor,
                   upsample_factor: int = 4,
                   ) -> List[torch.Tensor] | torch.Tensor:
     """
@@ -357,7 +353,7 @@ def upsample_meis(meis: List [torch.Tensor] | torch.Tensor,
     if isinstance(meis, torch.Tensor):
         mei_list = [meis]
     else:
-        meis_list = meis
+        mei_list = meis
 
     upsampled_meis = []
     for mei in mei_list:
@@ -375,36 +371,57 @@ def upsample_meis(meis: List [torch.Tensor] | torch.Tensor,
  
 
 
-def retrieve_meis_and_save_as_avis(rois_seed: List[Tuple[int,int]],
-                                    mei_data_container: pd.DataFrame,
+def get_background_tensor(norm_dict: Dict[str,float],
+                          mei_shape : Tuple[int,int,int,int],
+                          n_bsl_fames_before_mei: int = 40,
+                          device = "cuda",
+                          ) -> torch.Tensor:
+    
+
+    bsl_tensor = torch.zeros((mei_shape[0], 
+                             n_bsl_fames_before_mei, 
+                             mei_shape[2], 
+                             mei_shape[3]), dtype=torch.float32,device=device)
+    
+    for channel_idx in [0,1]:
+        bsl_tensor[channel_idx] = norm_dict[f"channel_{channel_idx}_mean"]
+
+    return bsl_tensor
+
+
+def process_meis_and_save_as_avis(id_mei: Dict[str,torch.Tensor],
                                    stimulus_directory: str,
                                    mei_sd_scale_factor: float = 1.0,
                                    n_bsl_fames_before_mei: int = 40,
                                    ) -> List[str]:
     """
-    1. extracts the MEIs for the given roi_ids and seeds from the dict structure they were stored in the wrapper
-    2. Upsamples and puts them back to original pixel space
-    3. creates an avi file for each MEI and stores it in the given directory
-    4. returns a list of the unique identifiers of the created MEI avi files."""
+    Expects selected_meis of each key is str of the form "roi_{roi_id}_seed_{seed} " and
+    tensor mei as value
 
-    # extract the MEIs for the given roi_ids and seeds from the dict structure they were stored in the wrapper
-    selected_meis = extract_selected_meis(rois_seed, mei_data_container)
-
+    1. Upsamples and puts them back to original pixel space
+    2. creates an avi file for each MEI and stores it in the given directory
+    3. returns a list of the unique identifiers of the created MEI avi files."""
+    
+    
 
     ## Upsample and put back to space.
-    for key, mei in selected_meis.items():
+    for key, mei in id_mei.items():
 
         # upsample
-        mei = upsample_meis(mei, upsample_factor=4)
+        mei = spatial_upsample_meis(mei, upsample_factor=4)
 
         # convert to orginal pixel space
         mei = put_mei_back_to_original_space(mei, # type: ignore
-                                             norm_dict=NORM_DICT,
+                                             norm_dict=pre_normalisation_values_18x16,
                                              mei_sd_scale_factor=mei_sd_scale_factor)
                 
         # add the baseline frames before the mei
-        assert mei.ndim == 4
-        bsl_tensor = NORM_DICT["norm_mean"] * torch.ones((2, n_bsl_fames_before_mei, mei.shape[2], mei.shape[3]), dtype=torch.float32,device=mei.device)
+        bsl_tensor = get_background_tensor(norm_dict=pre_normalisation_values_18x16,
+                                           mei_shape=mei.shape,
+                                           n_bsl_fames_before_mei=n_bsl_fames_before_mei,
+                                           device=mei.device,
+                                           )
+        # concatenate in time
         full_mei_stim = torch.cat((bsl_tensor, mei), dim=1)
     
         # create avi from stim tensor
@@ -413,30 +430,40 @@ def retrieve_meis_and_save_as_avis(rois_seed: List[Tuple[int,int]],
         print(f"Creating MEI avi file for {key} at {avi_full_path}.")
         create_avi_from_tensor(full_mei_stim, avi_full_path)
 
-    return list(selected_meis.keys())
+    return list(id_mei.keys())
 
 
-def generate_mei_ordering(roi_id2mei_ids: Dict[int,List[str]],reordered_roi_ids: List[int],seed = 42) -> List[List[str]]:
+def generate_mei_ordering(roi_id2mei_ids: Dict[int,List[str]],
+                          reordered_roi_ids: List[int],
+                          nreps = 3,
+                          seed = 42) -> List[List[str]]:
     """
     roi_ids2meis_ids: Dict[int,List[str]] -> the mapping from roi id to the mei_ids we want to show that roi
     reordered_roi_ids: the chronological order of the roi_ids we want to stimulate. 
 
-    Does 2 things, each entry ROI it look in  roi_ids2mei_ids for its mei_ids and these are  shuffled randomly, 
-    and then mei_ids are returned accroding to the roi_order from reordered_roi_ids.
-    
-    NOTE: roi_id2mei_ids can contain more roi_ids than selected by the user and thus in reordered_roi_ids.
-    THESE WILL THEN NOT BE USED
+    Does:
+    1) each entry ROI it look in  roi_ids2mei_ids for its mei_ids
+    2) thy are repearted nreps number of times and then shuffled within the repeats, 
+    3)then mei_ids are returned accroding to the roi_order from reordered_roi_ids.
+
     """
+
+    assert nreps >=1 
     np.random.seed(seed)
 
     # create the presentation ordering according to the reordered_roi_ids
     mei_presentation_ordering: List[List[str]] = []
     for roi_id in reordered_roi_ids:
         mei_ids = roi_id2mei_ids[roi_id]
-        
-        np.random.shuffle(mei_ids)
 
-        mei_presentation_ordering.append(mei_ids)
+        mei_id_list_for_roi = []
+        for _ in range(nreps):
+            np.random.shuffle(mei_ids)
+            mei_id_list_for_roi.extend(mei_ids)
+        
+        
+
+        mei_presentation_ordering.append(mei_id_list_for_roi)
 
     return mei_presentation_ordering
 
@@ -444,15 +471,19 @@ def generate_mei_ordering(roi_id2mei_ids: Dict[int,List[str]],reordered_roi_ids:
 def create_metadata_file(reordered_rf_mean_x_um: List[float],
                          reordered_rf_mean_y_um: List[float],
                          reordered_roi_ids: List[int],
-                         mei_presentation_ordering: List[List[str]],full_file_path: str) -> None:
+                         full_file_path: str,
+                         **metadata_key_vals : Any,
+                         ) -> None:
     """
     Stored metadata in a dict and saves it as a yaml file.
+    always stores position and roi_id, can then also store other metadata.
+
     """
         
     # save positions, roi_ids, mei_ids to be presented
     metadata = {"positions": [],
                 "roi_ids": [],
-                "mei_ids": mei_presentation_ordering,} 
+                **metadata_key_vals,} 
     
 
     for x, y, roi_id in zip(reordered_rf_mean_x_um, reordered_rf_mean_y_um, reordered_roi_ids, strict=True):
@@ -479,16 +510,76 @@ def check_mei_presentation_ordering(mei_presentation_ordering,reordered_roi_ids)
         raise ValueError("Not all sublists in mei_presentation_ordering have the same length.")
 
 
+# create new folder for stimuli 
+def create_new_stim_subdir(abs_save_dir: str) -> str:
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    new_dir = os.path.join(abs_save_dir,timestamp)
+
+    os.makedirs(new_dir, exist_ok=True)
+    return new_dir
+
+    
+def create_rf_test_dir(
+        roi_ids_list: List[int],
+        stimulus_table: Any,
+        fit_gauss_2d_rf_table: Any,
+        abs_save_dir: str,
+    ) -> None:
+    """
+    Wrapper for RF test stimulus doing 3 things: 
+    1. retriving RF mesand
+    2. generating roi_id stimulation order based on RF mean position
+    3. saving the data to a new stimulus dir
+    """
+    if len(roi_ids_list) == 0:
+        raise ValueError("roi_ids_list is empty.")
+    if not all(isinstance(roi_id, int) for roi_id in roi_ids_list):
+        raise ValueError("All elements in roi_ids_list must be integers.")
+    assert os.path.exists(abs_save_dir), f"Directory {abs_save_dir} does not exist."
+
+
+    ## 1) get the positions and their ordering
+    rf_mean_x_um, rf_mean_y_um, initial_roi_id_order = extract_rf_means_from_selected_rois(
+        roi_ids_list,
+        stimulus_table=stimulus_table,
+        gauss_rf_fit_table=fit_gauss_2d_rf_table,
+    )
+    log(f"Extracted the followin peak values for ROIs {initial_roi_id_order}:\nx {rf_mean_x_um}, \ny{rf_mean_y_um}.")
+    print(f"Initial roi_id order: {initial_roi_id_order}.")
+
+    ## generate a orderings
+    # Roi spatial ordering that maximizing distance between MEIs
+    presentation_ordering_idx = generate_presentation_location_order(rf_mean_x_um,
+                                                                    rf_mean_y_um,
+                                                                    )
+    reordered_roi_ids: List[int] = [initial_roi_id_order[i] for i in presentation_ordering_idx]
+    reordered_rf_mean_x_um = [rf_mean_x_um[i] for i in presentation_ordering_idx]
+    reordered_rf_mean_y_um = [rf_mean_y_um[i] for i in presentation_ordering_idx]
+
+    log(f"Presentation ordering indices: {presentation_ordering_idx}\n corresponds to roi_id ordering of {reordered_roi_ids}.")
+    print(f"Reordered roi_id order: {reordered_roi_ids}.")
+
+    new_dir = create_new_stim_subdir(abs_save_dir)
+
+    metadata_filename = os.path.join(new_dir,"metadata.yaml")
+    create_metadata_file(reordered_rf_mean_x_um,
+                         reordered_rf_mean_y_um,
+                         reordered_roi_ids,
+                         metadata_filename,
+                         )
+    log(f"Saved metadata file at {metadata_filename}.")
+    print(f"Saved metadata file at {metadata_filename}.")
+    print("DONE!")
 
 def create_single_mei_avis_and_metadata(
-    rois_seed: List[Tuple[int,int]],
+    rois_selected: List[int] | str,
     roi_id2mei_ids: Dict[int,List[str]],
     mei_data_container: pd.DataFrame,
     stimulus_table: Any,
     fit_gauss_2d_rf_table: Any,
     abs_save_dir: str,
     mei_sd_scale_factor: float = 1.0,
-    ):
+    ) -> None:
 
     """
     Does the following steps:
@@ -499,25 +590,39 @@ def create_single_mei_avis_and_metadata(
 
     ROI_ID, SEED, MEI NAMING CONVENTION: roi_id is an int, seed is an int mei_id is a string of the form "roi_{roi_id}_seed_{seed}" 
     """
+    if isinstance(rois_selected, str):
+        if not rois_selected == "all":
+            raise ValueError("If rois_selected is a string, it must be 'all'. Else specify roi_ids in list")
+        rois_selected = list(roi_id2mei_ids.keys())
 
     ## some checks 
     # all roi seeds in data container
-    for roi_id, seed in rois_seed:
-        query = (mei_data_container['roi_id'] == roi_id) & (mei_data_container['seed'] == seed)
+    for roi_id in rois_selected:
+        query = (mei_data_container['roi_id'] == roi_id)
         matching_rows = mei_data_container[query]
-        if len(matching_rows) != 1:
-            raise ValueError(f"MEI for roi_id {roi_id} and seed {seed} passed by user not found in mei_data_container.")
+        if len(matching_rows) not in [1, 2]:
+            raise ValueError(f"Expected 1 or 2 MEIs for roi_id {roi_id}, but found {len(matching_rows)} MEIs.")
     
-    # warn if duplicate
+    assert os.path.exists(abs_save_dir), f"Directory {abs_save_dir} does not exist."
 
-    duplicates = [item for item in rois_seed if rois_seed.count(item) > 1]
+    # warn if duplicate
+    duplicates = [item for item in rois_selected if rois_selected.count(item) > 1]
     if duplicates:
-        raise ValueError(f"Duplicate (roi_id, seed) pairs found in rois_seed: {set(duplicates)}")
+        raise ValueError(f"Duplicate roi_ids pairs found in rois_seed: {set(duplicates)}")
+    
+    # make sure mei_ids are in data container
+    if not "mei_id" in mei_data_container.columns:
+        raise ValueError("mei_data_container must have a column named 'mei_id'.")
+    
     ################# decide on positioning and play sequence ##################
+    
+    ## filter roi_id2mei_id dict to only have the rois_selected as keys
+    roi_id2mei_ids = {roi_id: mei_ids for roi_id, mei_ids in roi_id2mei_ids.items() if roi_id in rois_selected}
+
 
     ## 1) get the positions and their ordering
     rf_mean_x_um, rf_mean_y_um, initial_roi_id_order = extract_rf_means_from_selected_rois(
-        [roi_id for roi_id, _ in rois_seed],
+        rois_selected,
         stimulus_table=stimulus_table,
         gauss_rf_fit_table=fit_gauss_2d_rf_table,
     )
@@ -540,6 +645,7 @@ def create_single_mei_avis_and_metadata(
     mei_presentation_ordering: List[List[str]] = generate_mei_ordering(
         roi_id2mei_ids=roi_id2mei_ids,
         reordered_roi_ids=reordered_roi_ids,
+        nreps=3,
         seed=42,
     )
 
@@ -550,16 +656,16 @@ def create_single_mei_avis_and_metadata(
 
     ################# file saving ##################
 
-    # create new folder for stimuli 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    new_dir = os.path.join(abs_save_dir,timestamp)
-   
-    os.makedirs(new_dir, exist_ok=True)
+
+    new_dir = create_new_stim_subdir(abs_save_dir)
+
+    id_meis = extract_selected_meis(roi_id2mei_ids=roi_id2mei_ids,
+                                    mei_data_container=mei_data_container)
+
 
     # 3)  retrieve meis and save as avis
-    retrieved_mei_ids = retrieve_meis_and_save_as_avis(
-        rois_seed=rois_seed,
-        mei_data_container=mei_data_container,
+    retrieved_mei_ids = process_meis_and_save_as_avis(
+        id_mei=id_meis,
         stimulus_directory=new_dir,
         mei_sd_scale_factor=mei_sd_scale_factor,
         n_bsl_fames_before_mei=40,
@@ -572,8 +678,11 @@ def create_single_mei_avis_and_metadata(
     create_metadata_file(reordered_rf_mean_x_um,
                          reordered_rf_mean_y_um,
                          reordered_roi_ids,
-                         mei_presentation_ordering,
-                         metadata_filename)
+                         metadata_filename,
+
+                         # kwargs optional
+                         mei_ids=mei_presentation_ordering,
+                         )
     log(f"Saved metadata file at {metadata_filename}.")
     print(f"Saved metadata file at {metadata_filename}.")
     print("DONE!")

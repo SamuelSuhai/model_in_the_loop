@@ -62,6 +62,8 @@ class DJTableHolder:
 
         # get repo directory
         self.repo_directory: str = repo_directory
+        # save as environment variable 
+        os.environ["MITL_REPO_DIRECTORY"] = repo_directory
 
         # information for UserInfo table
         self.userinfo: dict = userinfo
