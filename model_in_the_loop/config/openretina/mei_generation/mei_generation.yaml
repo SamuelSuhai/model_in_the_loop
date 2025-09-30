@@ -20,6 +20,9 @@ spatial_gaussian_kwargs:
     kernel_size: 5
     reflect_pad: false
 
+range_regularization_kwargs:
+    factor: 0.1
+
 reconstruct_mei: true
 postprocessing_params:
 

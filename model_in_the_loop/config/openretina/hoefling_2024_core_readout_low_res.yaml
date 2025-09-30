@@ -27,11 +27,11 @@ model:
 is_ensemble_model: true
 
 paths:
-  load_model_path: ${paths.repo_directory}model_in_the_loop/models/full_ensemble  #/gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/models/missing_first_ensemble # e.g. hoefling_2024_base_low_res or path to a .ckpt model
+  load_model_path: ${paths.repo_directory}model_in_the_loop/models/missing_first_ensemble #${paths.repo_directory}model_in_the_loop/models/full_ensemble  #e # e.g. hoefling_2024_base_low_res or path to a .ckpt model
   cache_dir: ${oc.env:OPENRETINA_CACHE_DIRECTORY} # Remote files are downloaded to this location
   # data_dir: ${paths.cache_dir}/data/ # Folder where local files are read from.
   log_dir: "${paths.repo_directory}model_in_the_loop" # Used as parent for output_dir. Will store train logs.
-  output_dir: "output" # Modify subpaths in the "hydra/default.yaml" config
+  output_dir: "outputs" # Modify subpaths in the "hydra/default.yaml" config
   movies_path: "https://huggingface.co/datasets/open-retina/open-retina/blob/main/euler_lab/hoefling_2024/stimuli/rgc_natstim_18x16_joint_normalized_2024-01-11.zip"
   responses_path: "https://huggingface.co/datasets/open-retina/open-retina/resolve/main/euler_lab/hoefling_2024/responses/rgc_natstim_2024-08-14.zip"
 

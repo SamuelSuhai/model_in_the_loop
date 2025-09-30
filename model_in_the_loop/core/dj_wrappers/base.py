@@ -102,7 +102,7 @@ class DJTableHolder:
                 DNoiseTraceParams,DNoiseTrace,STAParams,STA, SplitRFParams,SplitRF,FitGauss2DRF,
                 
                 # OpenRetina
-                OpenRetinaHoeflingFormat,OnlineMEIs,OnlineTrainedModel,
+                OpenRetinaHoeflingFormat,OnlineMEIs,OnlineTrainedModel,OnlineOptimizedStimulus,StimulusDecomposition,ModelStimulusResponse
                 
                 schema,
             )
@@ -155,6 +155,10 @@ class DJTableHolder:
             'OpenRetinaHoeflingFormat': OpenRetinaHoeflingFormat,
             'OnlineMEIs': OnlineMEIs,
             'OnlineTrainedModel': OnlineTrainedModel,
+            "OnlineOptimizedStimulus": OnlineOptimizedStimulus,
+            "StimulusDecomposition": StimulusDecomposition,
+            "ModelStimulusResponse": ModelStimulusResponse,
+            
         }
 
         sleep(self.sleep_time_between_table_ops)

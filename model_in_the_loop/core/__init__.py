@@ -3,6 +3,7 @@ from .dj_wrappers import (
     Preprocessor,
     QualityAndTypeWrapper,
     RandomSeedMEIWrapper,
+    LandMEIWrapper,
     STAWrapper,
 )
 from .gui import (

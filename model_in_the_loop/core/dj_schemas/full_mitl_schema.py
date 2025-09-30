@@ -373,6 +373,86 @@ class OpenRetinaHoeflingFormat(OpenRetinaHoeflingFormatTemplate):
     retinal_roi_location_table = RetinalRoiLocation
     
 
+class OnlineOptimizedStimulusTemplate(dj.Manual):
+    database = ""
+    
+
+    @property
+    def definition(self):
+        definition = """
+        # Saves the stims generated online.
+        -> self.openretina_hoefling_format_table  # the table that contains the Open Retina Hoefling format (dummy) data
+        roi_id:         int
+        readout_idx:    int  # the index of the readout neuron in the model
+        objective_name: str  # the objective used to generate the stim
+        ---
+        stimulus:       longblob    # np.ndarray of shape (batch,channel,time,height,width)
+        """
+        return definition
+
+    @property
+    @abstractmethod
+    def field_table(self):
+        pass
+
+    @property
+    @abstractmethod
+    def openretina_hoefling_format_table(self):
+        """The table that contains the Open Retina Hoefling format (dummy) data."""
+        pass
+
+class StimulusDecompositionTemplate(dj.Manual):
+    database = ""
+    
+
+    @property
+    def definition(self):
+        definition = """
+        # Saves the stims generated online.
+        -> self.online_optimized_stimulus_table  # the table that contains the Open Retina Hoefling format (dummy) data
+        roi_id:         int
+        readout_idx:    int  # the index of the readout neuron in the model
+        objective_name: str  # the objective used to generate the stim
+        ---
+        ch0_temporal_kernels:   longblob    # np.ndarray 
+        ch0_spatial_kernels    longblob    # np.ndarray 
+        ch1_temporal_kernels:   longblob    # np.ndarray 
+        ch1_spatial_kernels    longblob    # np.ndarray
+        """
+        return definition
+
+    @property
+    @abstractmethod
+    def field_table(self):
+        pass
+
+    @property
+    @abstractmethod
+    def openretina_hoefling_format_table(self):
+        """The table that contains the Open Retina Hoefling format (dummy) data."""
+        pass
+
+
+class ModelStimulusResponseTemplate(dj.Manual):
+    database = ""
+    
+
+    @property
+    def definition(self):
+        definition = """
+        # Saves the stims generated online.
+        -> self.online_optimized_stimulus_table  # the table that has the stims
+        ---
+        response:       longblob    # np.ndarray 
+        """
+        return definition
+
+    @property
+    @abstractmethod
+    def online_optimized_stimulus_table(self):
+        pass
+
+
 
 class OnlineMEIsTemplate(dj.Manual):
     database = ""
@@ -406,6 +486,24 @@ class OnlineMEIsTemplate(dj.Manual):
 class OnlineMEIs(OnlineMEIsTemplate):
     field_table = Field
     openretina_hoefling_format_table = OpenRetinaHoeflingFormat
+
+
+@schema
+class OnlineOptimizedStimulus(OnlineOptimizedStimuliTemplate):
+    field_table = Field
+    openretina_hoefling_format_table = OpenRetinaHoeflingFormat
+
+
+@schema
+class ModelStimulusResponse(ModelStimulusResponseTemplate):
+    online_optimized_stimulus_table = OnlineOptimizedStimulus
+
+
+@schema
+class StimulusDecomposition(StimulusDecompositionTemplate):
+    online_optimized_stimulus_table = OnlineOptimizedStimulus
+
+
 
 
 class OnlineTrainedModelTemplate(dj.Manual):

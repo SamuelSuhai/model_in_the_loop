@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from .base import DJComputeWrapper, DJTableHolder
 from omegaconf import DictConfig
-from model_in_the_loop.utils.mei_generation import (reconstruct_mei_from_decomposed,generate_meis_with_n_random_seeds,
+from model_in_the_loop.utils.stimulus_optimization import (reconstruct_mei_from_decomposed,generate_meis_with_n_random_seeds,
                                 decompose_mei, get_model_mei_response,Center,get_model_gaussian_scaled_means,
                                 STIMULUS_SHAPE,FRAME_RATE_MODEL
                             )
@@ -16,6 +16,7 @@ import torch
 from openretina.models.core_readout import BaseCoreReadout
 from openretina.modules.layers.ensemble import EnsembleModel
 from openretina.data_io.hoefling_2024.responses import make_final_responses
+from openretina.data_io.hoefling_2024.constants import pre_normalisation_values_18x16
 
 
 from model_in_the_loop.utils.model_training import load_stimuli, train_model_online
@@ -37,6 +38,9 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         self.quality_filtering = cfg.quality_filtering
         self.save_dir_parent = os.path.join(cfg.paths.repo_directory,
                                             "model_in_the_loop/data/online_computed_data" )
+        self.log_dir = os.path.join(cfg.paths.repo_directory,
+                                    "model_in_the_loop/outputs/logs")
+
 
         self.seeds = seeds
         self.colors = plt.cm.nipy_spectral(np.linspace(0, 1,len(self.seeds)))
@@ -702,9 +706,9 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
         # map roi_id to model neuron idx
         self.roi2readout_idx_wmeis = {roi:idx for roi,idx in self.roi_ids2readout_idx.items() if idx in self.neuron_idxs_passing_filter}
-        log(f"{self.roi2readout_idx_wmeis=}")
+        log(f"{self.roi2readout_idx_wmeis=}",self.log_dir)
         self.readout_idx_wmei2rois = {idx:roi for roi,idx in self.roi2readout_idx_wmeis.items()}
-        log(f"{self.readout_idx_wmei2rois=}")
+        log(f"{self.readout_idx_wmei2rois=}",self.log_dir)
 
         
         ## center the readouts            
@@ -724,7 +728,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
         ## decide which neurons get stable and which unstable meis
         idx2stability = self.get_stable_unstable_split(self.neuron_idxs_passing_filter)
-        log(f"{idx2stability=}")
+        log(f"{idx2stability=}",self.log_dir)
         
         # initialize mei data containter
         mei_data_container_entries = []
@@ -732,7 +736,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         ## generate meis
         for phase in ['unstable', 'stable']:
             print(f"Generating {phase} MEIs for neurons (readout idx): {[idx for idx,stab in idx2stability.items() if stab ==phase ]}.")
-            log(f"Generating {phase} MEIs for neurons (readout idx): {[idx for idx,stab in idx2stability.items() if stab == phase ]}.")
+            log(f"Generating {phase} MEIs for neurons (readout idx): {[idx for idx,stab in idx2stability.items() if stab == phase ]}.",self.log_dir)
             set_model_to_eval_mode = True if phase == 'stable' else False
             neuron_ids_to_analyze = [neuron_id for neuron_id, stability in idx2stability.items() if stability == phase]
             seeds = self.seeds if phase == 'unstable' else [self.seeds[0]] # only one seed for stable meis
