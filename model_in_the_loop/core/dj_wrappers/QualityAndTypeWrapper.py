@@ -140,13 +140,13 @@ class QualityAndTypeWrapper(DJComputeWrapper):
         #  get the confidence of assigned group which is the max 
         confidence_data_dict = {roi_id: confidence for roi_id, confidence in zip(roi_ids_celltype, confidence_scors)}
         if verbose:
-            print(f"Number filtered rois based on classifier confidence {sum(confidence_scors > classifier_confidence)}.")
-            print(f"Number filtered rois based on celltypes {sum([t in celltypes for t in celltype_data])}.")
-            print(f"Number filtered rois based on Chirp MB QI {sum((qidx_values >qidx_min) | (d_qi_values > d_qi_min) )}.")
+            print(f"Number after filtering rois based on classifier confidence {sum(confidence_scors > classifier_confidence)}.")
+            print(f"Number after filtered rois based on celltypes {sum([t in celltypes for t in celltype_data])}.")
+            print(f"Number after filtered rois based on Chirp MB QI {sum((qidx_values >qidx_min) | (d_qi_values > d_qi_min) )}.")
 
         # Filter roi_ids based on the criteria
         passing_roi_ids = []
-        for roi_id in set(roi_ids_mb + roi_ids_chirp + roi_ids_celltype):
+        for roi_id in np.unique(np.concatenate([roi_ids_mb, roi_ids_chirp, roi_ids_celltype])):
             d_qi = ori_dir_data_dict.get(roi_id, 0.0)  # Default to 0.0 if not found
             qidx = chirp_data_dict.get(roi_id, 0.0)  # Default to 0.0 if not found
             confidence = confidence_data_dict.get(roi_id, 0.0)  # Default to 0.0 if not found

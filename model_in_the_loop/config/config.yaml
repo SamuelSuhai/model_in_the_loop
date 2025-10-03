@@ -1,7 +1,25 @@
+hydra:
+  searchpath:
+    - file:////gpfs01/euler/User/ssuhai/GitRepos/open-retina/
+
 defaults:
-  - _self_
-  - openretina@model_configs: hoefling_2024_core_readout_low_res
-  - openretina/mei_generation: mei_generation
+  - configs@model_configs: hoefling_2024_core_readout_low_res
+  - stimulus_optimization: stimulus_optimization
+  - DJ: DJ
+  - _self_ # self at end -> can overwrite everything else
+
+
+
+model_configs:
+  # only train readout must be false if is_ensemble_model is true
+  only_train_readout: false # whether or not to freeze core parameters and only train readout (eg. when finetuning model to new data)
+  is_ensemble_model: false
+  responses_path_local: ${oc.env:OPENRETINA_CACHE_DIRECTORY}/euler_lab/hoefling_2024/responses/rgc_natstim_2024-08-14.h5
+
+  # overwrite load_model_path
+  paths:
+    load_model_path: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/model_in_the_loop/models/full_ensemble
+
 
 
 paths: 
@@ -22,56 +40,26 @@ paths:
   stimulus_output_dir: /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop
   dummy_ini_dir: model_in_the_loop/data/dummy_ini/
 
+  # cache dir 
+  set_cache_dir_openretina: /gpfs01/euler/User/ssuhai/openretina_cache
 
 
+  ## add some paths from openretina to this level 
+
+  # Symbolic references to model_configs paths
+  movies_path: ${model_configs.paths.movies_path}
+  cache_dir: ${model_configs.paths.cache_dir}
+  responses_path: ${model_configs.paths.responses_path}
+  data_dir: ${model_configs.paths.data_dir}
+  log_dir: ${model_configs.paths.log_dir}
+  output_dir: ${model_configs.paths.output_dir}
+
+  
 # change aspects of the ini file here if needed. 
 # string_eye and string_data are modified automatically 
 ini_file_keys: 
   string_userName: clexperimenter
   string_projName: projectname
-
-DJ:
-  username: ssuhai
-  userinfo:
-    experimenter: 'closedlooptest' 
-    # at what location what experimental information is stored in the file name
-    animal_loc: 1
-    region_loc: 2
-    field_loc: 3
-    stimulus_loc: 4 
-    cond1_loc: 5
-    data_dir: ${paths.repo_directory}model_in_the_loop/data/data_dj_format
-
-  table_parameters:
-    # for the DJ tables 
-    PreprocessParams: [
-        {preprocess_id: 1, fs_resample: 60, stim_names: ["gChirp", "lChirp", "movingbar", "densenoise"]},
-        {preprocess_id: 2, window_length: 60, poly_order: 3, non_negative: 1, subtract_baseline: 0, standardize: 1, stim_names: ["mouse_cam"]}
-        ]
-
-    Stimulus:
-      noise:
-        stim_name: 'densenoise'
-        stim_family: 'noise'
-        pix_n_x: 20
-        pix_n_y: 15
-        skip_duplicates: True
-        pix_scale_x_um: 40
-        pix_scale_y_um: 40
-        framerate: 5
-
-    DNoiseTraceParams:
-        dnoise_params_id: 1
-        fupsample_trace: 20
-        fupsample_stim: 4
-        ref_time: 'stim'
-        fit_kind: 'gradient'
-        skip_duplicates: True
-        pre_blur_sigma_s: 0.
-        post_blur_sigma_s: 0.
-
-
-
 
 
 

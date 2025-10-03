@@ -148,6 +148,67 @@ def clear_roi_field_field(Presentation, field_key: Dict[str, Any], safemode: boo
             os.remove(file)
             print(f"Removed file: {file}")
 
+
+def rm_all_experiment_dirs(data_dir: str, safemode: bool = True) -> None:
+    """
+    Remove experiment dirs in data_dir
+    """
+    
+    if not os.path.exists(data_dir):
+        print(f"Directory {data_dir} does not exist. Nothing to delete.")
+        return
+    
+    # get experiminet subdirs 
+    experiment_dirs = [os.path.join(data_dir, d) for d in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, d))]
+
+    if len(experiment_dirs) == 0:
+        print(f"No experiment directories found in {data_dir}. Nothing to delete.")
+        return
+    else:
+        for exp_dir in experiment_dirs:
+            # prompt user to confirm deletion
+            if safemode:
+                confirm = input(f"Are you sure you want to remove {exp_dir}? (yes/no): ")
+                if confirm.lower() != 'yes':
+                    print("Deletion cancelled.")
+                    return
+            shutil.rmtree(exp_dir)
+            print(f"Removed directory and all its contents: {exp_dir}")
+
+def clear_data_dump_dir(data_dump_dir: str, safemode: bool = True) -> None:
+    """
+    Remove files in data dump dir
+    """
+    if not os.path.exists(data_dump_dir):
+        raise ValueError(f"Directory {data_dump_dir} does not exist. Nothing to delete.")
+    
+    # if empty do nothin
+    if len(os.listdir(data_dump_dir)) == 0:
+        print(f"Directory {data_dump_dir} is already empty. Nothing to delete.")
+        return
+
+    if safemode:
+        confirm = input(f"Are you sure you want to remove all files in {data_dump_dir}? (yes/no): ")
+        if confirm.lower() != 'yes':
+            print("Deletion cancelled.")
+            return
+
+
+    # remove all files in data dump dir
+    for filename in os.listdir(data_dump_dir):
+        file_path = os.path.join(data_dump_dir, filename)
+        try:
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.remove(file_path)
+                print(f"Removed file: {file_path}")
+            elif os.path.isdir(file_path):
+                print(f"Skipping directory: {file_path}")
+        except Exception as e:
+            print(f"Failed to delete {file_path}. Reason: {e}")
+
+
+
+
 def modify_ini_file_preserving_format(input_path: str, 
                                       output_path: str, 
                                       modifications: Dict[str, Any],

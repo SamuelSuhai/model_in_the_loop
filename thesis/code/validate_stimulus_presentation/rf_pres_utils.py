@@ -44,7 +44,7 @@ def plot_srf_pos(roi_id:int ,
     if 'alpha' not in rf_kwargs:
         rf_kwargs['alpha'] = 0.5
     ax.imshow(sRF, origin='lower', **rf_kwargs, cmap='grey')
-    ax.scatter(x_mean,y_mean, color='red', s=20, label='Peak Position')
+    ax.scatter(x_mean,y_mean, color='blue', s=10, label='Peak Position')
 
     # take out ticks
     ax.set_xticks([])

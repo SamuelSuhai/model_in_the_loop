@@ -317,14 +317,17 @@ def transform_to_qdspy_coord(stimulus_table,
 def extract_rf_means_from_selected_rois(roi_ids: List[int],
                                         stimulus_table: Any,
                                         gauss_rf_fit_table: Any,
+                                        field_restriction: Dict[str,Any]={},
                                         ) -> Tuple[List[float], List[float],List[int]]:
     """
     Extracts the RF  table for the given roi_ids.
     """
     expression = get_roi_query_expression(roi_ids)
-    fit_query = gauss_rf_fit_table & expression
+    fit_query = gauss_rf_fit_table & field_restriction & expression
     if len(fit_query) == 0 or len(fit_query) != len(np.unique(roi_ids)):
-        raise ValueError(f"Not all roi_ids {roi_ids} are present in the PeakSTAPosition table.")
+        raise ValueError(f"Not all roi_ids {roi_ids} are present in the gauss_rf_fit_table table. \
+                         Found in table: {fit_query.fetch('roi_id')}. ")
+                        
     else:
         print(f"Found {len(fit_query)} rois in the FitGauss2D table.")
 
@@ -583,6 +586,7 @@ def create_single_mei_avis_and_metadata(
     fit_gauss_2d_rf_table: Any,
     abs_save_dir: str,
     mei_sd_scale_factor: float = 1.0,
+    field_restriction: Dict[str,Any]={},
     ) -> None:
 
     """
@@ -629,6 +633,7 @@ def create_single_mei_avis_and_metadata(
         rois_selected,
         stimulus_table=stimulus_table,
         gauss_rf_fit_table=fit_gauss_2d_rf_table,
+        field_restriction=field_restriction,
     )
     log(f"Extracted the followin peak values for ROIs {initial_roi_id_order}:\nx {rf_mean_x_um}, \ny{rf_mean_y_um}.")
     print(f"Initial roi_id order: {initial_roi_id_order}.")

@@ -62,8 +62,6 @@ class DJTableHolder:
 
         # get repo directory
         self.repo_directory: str = repo_directory
-        # save as environment variable 
-        os.environ["MITL_REPO_DIRECTORY"] = repo_directory
 
         # information for UserInfo table
         self.userinfo: dict = userinfo
@@ -104,7 +102,7 @@ class DJTableHolder:
                 DNoiseTraceParams,DNoiseTrace,STAParams,STA, SplitRFParams,SplitRF,FitGauss2DRF,
                 
                 # OpenRetina
-                OpenRetinaHoeflingFormat,OnlineMEIs,OnlineTrainedModel,OnlineOptimizedStimulus,StimulusDecomposition,ModelStimulusResponse
+                OpenRetinaHoeflingFormat,OnlineMEIs,OnlineTrainedModel,OnlineOptimizedStimulus,StimulusDecomposition,ModelStimulusResponse,
                 
                 schema,
             )
@@ -359,6 +357,7 @@ class Preprocessor:
         Initialize the Preprocessor with a DJTableHolder instance.
         """
         self.dj_table_holder = dj_table_holder
+        self.debug = True
 
 
     def upload_iteration_metadata(self) -> None:
@@ -398,7 +397,11 @@ class Preprocessor:
         # apply autoshoft to all stimuli except the main one
         for i,pres_key in enumerate(roi_canvas.pres_names):
             if i == roi_canvas.main_stim_idx:
+                if self.debug:
+                    print(f"Skipping auto shift for main stim {pres_key}")
                 continue
+            if self.debug:
+                print(f"Auto shifting for stim {pres_key}")
             roi_canvas.set_selected_stim(pres_key)
             roi_canvas.exec_auto_shift()
 

@@ -1,7 +1,7 @@
 
 
 
-from typing import Dict,Any,Protocol, List,Tuple
+from typing import Dict,Any,Protocol, List,Tuple,Callable
 import torch
 
 from openretina.insilico.stimulus_optimization.regularizer import StimulusPostprocessor,_gaussian_1d_kernel
@@ -210,6 +210,22 @@ def generate_opt_stim(model: BaseCoreReadout | EnsembleModel,
 
     return stimulus[0] # return first batch
 
+def center_member_or_ensemble_readouts(model: BaseCoreReadout | EnsembleModel, new_session_id: str) -> List[torch.Tensor]:
+            ## center the readouts            
+    scaled_means_before_centering = []
+    if isinstance(model, EnsembleModel):
+        for member in model.members:
+            scaled_means_before_centering.append(get_model_gaussian_scaled_means(member,session= new_session_id)) # type: ignore
+    elif isinstance(model, BaseCoreReadout):
+        scaled_means_before_centering.append(get_model_gaussian_scaled_means(model,session= new_session_id)) # type: ignore
+    else:
+        raise ValueError("Model is neither ensemble nor BaseCoreReadout. Cannot center readouts.")
+    # apply centering
+    center = Center(target_mean = 0.0)
+    center(model)
+
+    return scaled_means_before_centering
+
 
 def decompose_mei(stimulus: np.ndarray, frame_rate_model: float = 30.0) -> Tuple[List[np.ndarray], List[np.ndarray], np.ndarray]:
     assert stimulus.ndim == 4, "Stimulus should be a 4D array (num_color_channels, time_steps, dim_y, dim_x)"
@@ -241,7 +257,8 @@ def reconstruct_spatiotemporal_kernel(
 def reconstruct_mei_from_decomposed(
         temporal_kernels: List[np.ndarray],
         spatial_kernels: List[np.ndarray],
-    ) -> np.ndarray:
+        turn_to_tensor: bool = True
+    ) -> np.ndarray | torch.Tensor:
     """reconstructs MEI with outer product of spatial and temporal kerenel."""
 
     assert len(temporal_kernels) == len(spatial_kernels), "Number of temporal and spatial kernels must match"
@@ -257,6 +274,9 @@ def reconstruct_mei_from_decomposed(
             temporal_kernels[color_idx], spatial_kernels[color_idx]
         )
     assert reconstructed_mei.shape == STIMULUS_SHAPE[1:]
+
+    if turn_to_tensor:
+        reconstructed_mei = torch.tensor(reconstructed_mei, dtype=torch.float32,device=DEVICE)
 
     return reconstructed_mei
     
@@ -296,15 +316,27 @@ def get_model_mei_response(model: BaseCoreReadout | EnsembleModel,
         
 
 
-def generate_meis_with_n_random_seeds(
+def generate_opt_stim_for_neuron_list(
     model: BaseCoreReadout | EnsembleModel,
     new_session_id: str, 
-    mei_generation_params: Dict[str, Any], 
-    random_seeds: List = [42],
+    opt_stim_generation_params: Dict[str, Any], 
+    random_seeds: List[int] | None = None,
+    seed_it_func: Callable | None = None,
     neuron_ids_to_analyze: List[int] = [0], # NOTE: this will optimize each id individually
-    set_model_to_eval_mode: bool = False,
+    set_model_to_eval_mode: bool = True,
+    objective_name: str = "increase",
 ) -> Dict[int, Dict[int, torch.Tensor]]:
-    """Generates a dictionary of MEIs for each neuron id and each random seed."""
+    """Generates a dictionary of MEIs for each neuron."""
+
+    if random_seeds is not None and seed_it_func is None:
+        print("Setting random seed function to torch.manual_seed")
+        seed_it_func = torch.manual_seed
+    elif random_seeds is None and seed_it_func is not None:
+        raise ValueError("If seed_it_func is provided, random_seeds must also be provided.")
+    elif random_seeds is None and seed_it_func is None:
+        print("No random seeds provided, not setting at all")
+        random_seeds = ["notset"] # type: ignore
+        seed_it_func = lambda x: None
     
 
     if set_model_to_eval_mode:
@@ -322,19 +354,19 @@ def generate_meis_with_n_random_seeds(
 
     # generate optimization components
     stimulus_postprocessor_list, response_reducer,stimulus_regularizing_loss = generate_optimization_components(
-        stimulus_range_constraints=mei_generation_params["stimulus_range_constraints"],
+        stimulus_range_constraints=opt_stim_generation_params["stimulus_range_constraints"],
         reducer_axis=0,
-        reducer_start=mei_generation_params["reducer_start"],
-        reducer_length=mei_generation_params["reducer_length"],
-        temporal_gaussian_kwargs=mei_generation_params["temporal_gaussian_kwargs"],
-        spatial_gaussian_kwargs=mei_generation_params["spatial_gaussian_kwargs"],
-        range_regularization_kwargs=mei_generation_params["range_regularization_kwargs"],
+        reducer_start=opt_stim_generation_params["reducer_start"],
+        reducer_length=opt_stim_generation_params["reducer_length"],
+        temporal_gaussian_kwargs=opt_stim_generation_params["temporal_gaussian_kwargs"],
+        spatial_gaussian_kwargs=opt_stim_generation_params["spatial_gaussian_kwargs"],
+        range_regularization_kwargs=opt_stim_generation_params["range_regularization_kwargs"],
     )
     
     all_meis = {neuron_id: {} for neuron_id in neuron_ids_to_analyze}
     
-    for i,seed in enumerate(random_seeds):
-        lightning.pytorch.seed_everything(seed)
+    for i,seed in enumerate(random_seeds): # type: ignore
+        seed_it_func(seed) # type: ignore
 
         for neuron_id in neuron_ids_to_analyze:
             
@@ -346,9 +378,9 @@ def generate_meis_with_n_random_seeds(
                         stimulus_regularizing_loss = stimulus_regularizing_loss,
                         stimulus_shape= STIMULUS_SHAPE,
                         neuron_id = neuron_id,
-                        max_iterations=mei_generation_params["max_iteration"],
-                        lr=mei_generation_params["lr"],
-                        objective_name="increase",)
+                        max_iterations=opt_stim_generation_params["max_iteration"],
+                        lr=opt_stim_generation_params["lr"],
+                        objective_name=objective_name,)
                         
             all_meis[neuron_id][seed] = single_neuron_seed_mei
     return all_meis

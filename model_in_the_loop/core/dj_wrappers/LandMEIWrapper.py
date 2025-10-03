@@ -19,7 +19,7 @@ from openretina.data_io.hoefling_2024.responses import make_final_responses
 from openretina.data_io.hoefling_2024.constants import pre_normalisation_values_18x16
 
 
-from model_in_the_loop.utils.model_training import load_stimuli, train_model_online
+from model_in_the_loop.utils.model_training import load_stimuli
 from model_in_the_loop.utils.simple_logging import log
 
 

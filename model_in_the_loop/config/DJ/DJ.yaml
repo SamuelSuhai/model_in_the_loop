@@ -1,0 +1,38 @@
+username: ssuhai
+userinfo:
+  experimenter: 'closedlooptest' 
+  # at what location what experimental information is stored in the file name
+  animal_loc: 1
+  region_loc: 2
+  field_loc: 3
+  stimulus_loc: 4 
+  cond1_loc: 5
+  data_dir: ${paths.repo_directory}model_in_the_loop/data/data_dj_format
+
+table_parameters:
+  # for the DJ tables 
+  PreprocessParams: [
+      {preprocess_id: 1, fs_resample: 60, stim_names: ["gChirp", "lChirp", "movingbar", "densenoise"]},
+      {preprocess_id: 2, window_length: 60, poly_order: 3, non_negative: 1, subtract_baseline: 0, standardize: 1, stim_names: ["mouse_cam"]}
+      ]
+
+  Stimulus:
+    noise:
+      stim_name: 'densenoise'
+      stim_family: 'noise'
+      pix_n_x: 20
+      pix_n_y: 15
+      skip_duplicates: True
+      pix_scale_x_um: 40
+      pix_scale_y_um: 40
+      framerate: 5
+
+  DNoiseTraceParams:
+      dnoise_params_id: 1
+      fupsample_trace: 20
+      fupsample_stim: 4
+      ref_time: 'stim'
+      fit_kind: 'gradient'
+      skip_duplicates: True
+      pre_blur_sigma_s: 0.
+      post_blur_sigma_s: 0.

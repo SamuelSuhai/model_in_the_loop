@@ -5,20 +5,28 @@ import numpy as np
 import matplotlib.pyplot as plt
 from .base import DJComputeWrapper, DJTableHolder
 from omegaconf import DictConfig
-from model_in_the_loop.utils.stimulus_optimization import (reconstruct_mei_from_decomposed,generate_meis_with_n_random_seeds,
-                                decompose_mei, get_model_mei_response,Center,get_model_gaussian_scaled_means,
-                                STIMULUS_SHAPE,FRAME_RATE_MODEL
-                            )
+from model_in_the_loop.utils.stimulus_optimization import (reconstruct_mei_from_decomposed,center_member_or_ensemble_readouts,
+                                                           generate_opt_stim_for_neuron_list,
+                                                            decompose_mei, get_model_mei_response,Center,get_model_gaussian_scaled_means,
+                                                            STIMULUS_SHAPE,FRAME_RATE_MODEL
+                                                           )
 
 from model_in_the_loop.utils.datajoiont_utils import get_rois_in_field_restriction_str
 import pickle
 import torch
 from openretina.models.core_readout import BaseCoreReadout
 from openretina.modules.layers.ensemble import EnsembleModel
-from openretina.data_io.hoefling_2024.responses import make_final_responses
+from openretina.data_io.hoefling_2024.responses import make_final_responses,filter_responses
+from openretina.data_io.base import MoviesTrainTestSplit, ResponsesTrainTestSplit
+from openretina.utils.h5_handling import load_h5_into_dict
 
 
-from model_in_the_loop.utils.model_training import load_stimuli, train_model_online
+from model_in_the_loop.utils.model_training import (load_stimuli, 
+                                                    train_or_refine_member_or_ensemble,
+                                                    get_single_neuron_split_predictions,
+                                                    get_single_neuron_session_correlations,
+                                                    get_dataloaders_and_data_info,
+                                            )
 from model_in_the_loop.utils.simple_logging import log
 
 class RandomSeedMEIWrapper(DJComputeWrapper):
@@ -33,11 +41,10 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
       
         self.model_configs = cfg.model_configs
-        self.mei_generation_params = cfg.openretina.mei_generation
+        self.mei_generation_params = cfg.stimulus_optimization
         self.quality_filtering = cfg.quality_filtering
         self.save_dir_parent = os.path.join(cfg.paths.repo_directory,
                                             "model_in_the_loop/data/online_computed_data" )
-
 
 
         self.seeds = seeds
@@ -132,6 +139,11 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
         x = np.arange(green_temporal_kernels.shape[1]) / FRAME_RATE_MODEL
 
+        # y axis limits
+        glob_max = max(np.max(green_temporal_kernels), np.max(uv_temporal_kernels))
+        glob_min = min(np.min(green_temporal_kernels), np.min(uv_temporal_kernels))
+
+
         # plotting
         for i,(seed, kernel) in enumerate(zip(seeds, green_temporal_kernels)):
             axs[0].plot(x, kernel, label=f"seed {seed}", color=self.colors[i], linestyle='-' if seed % 2 == 0 else '--')
@@ -145,6 +157,8 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         axs[1].set_title(f"UV ROI {roi_id} (neuron idx {readout_idx})", fontsize=6)
         axs[1].set_ylabel("Amplitude")
         axs[1].set_xlabel("Time (s)")
+        axs[0].set_ylim(glob_min - 0.1 * abs(glob_min), glob_max + 0.1 * abs(glob_max))
+        axs[1].set_ylim(glob_min - 0.1 * abs(glob_min), glob_max + 0.1 * abs(glob_max))
         axs[0].legend(fontsize=6)
         axs[1].legend(fontsize=6)
 
@@ -230,8 +244,8 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
               show = True) -> None:
         
         if not hasattr(self,"roi2readout_idx_wmeis"):
-            raise ValueError("No readouts found with meis for this wrapper instance. \
-                             Please run mei_subanalysis first before plotting.")
+            print("No readouts found with meis for this wrapper instance. Please run mei_subanalysis first before plotting.")
+            return
 
         if roi_id not in self.roi2readout_idx_wmeis.keys():
             print(f"ROI {roi_id} does not have an MEI. Select among the following: \n{list(self.roi2readout_idx_wmeis.keys())}")
@@ -319,29 +333,35 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         
         # spikes: no restriction, since the trstriction is in traces already and somehow
         # it has different primary keys
-        self.dj_table_holder("CascadeSpikes")().populate( processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+        self.dj_table_holder("CascadeSpikes")().populate(processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
+        
+        # assert equal length
+        if len(self.dj_table_holder("CascadeTraces")()) != len(self.dj_table_holder("CascadeSpikes")()):
+            raise ValueError("CascadeTraces and CascadeSpikes tables have different number of entries after population. Delete cascade entries first then repeat")
+
         progress += 15
         if progress_callback is not None:
             progress_callback(progress)
     
 
 
-    def apply_quality_filter(self) -> None:
-        
-        n_neurons_before = len(self.neuron_testset_correls)
+    def apply_quality_filter(self, min_nr_neurons_post = 6) -> None:
+
+        session_neuron_correls = self.neuron_testset_correls[self.new_session_id]
+        n_neurons_before = len(session_neuron_correls)
         neuron_idxs_passing_filter = []
-        for neuron_idx, corr in self.neuron_testset_correls.items():
+        for neuron_idx, corr in session_neuron_correls.items():
             if corr >= self.quality_filtering["min_testset_correl"]:
                 neuron_idxs_passing_filter.append(neuron_idx)
         
         self.neuron_idxs_passing_filter = neuron_idxs_passing_filter
         nr_neurons_after = len(self.neuron_idxs_passing_filter)
-        if nr_neurons_after < 6:
-            lowest_allowed = sorted(self.neuron_testset_correls.values(), reverse=True)[5]
-            raise ValueError (f"Pipeline requires at least 6 neurons in readout got {nr_neurons_after} with min_testset_correl of {self.quality_filtering["min_testset_correl"]}.\
+        if nr_neurons_after < min_nr_neurons_post:
+            lowest_allowed = sorted(session_neuron_correls.values(), reverse=True)[5]
+            raise ValueError (f"Pipeline requires at least {min_nr_neurons_post} neurons in readout got {nr_neurons_after} with min_testset_correl of {self.quality_filtering["min_testset_correl"]}.\
               adjust quality_filtering[`min_testset_correl`] to {lowest_allowed} to get this, then call \
                 random_seed_mei_wrapper.apply_quality_filter() and random_seed_mei_wrapper.mei_subanalysis() again.\
-                    testset correlations are: {self.neuron_testset_correls}")
+                    testset correlations are: {session_neuron_correls}")
         print(f"Filtered neurons based on testset correlation: {n_neurons_before} -> {nr_neurons_after}")
 
     def get_roi2rgb_and_alpha_255_map(self,
@@ -416,12 +436,6 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         #     }
         # )
     
-    def save_local_and_upload(self) -> None:
-        """
-        A wrapper to save all data to a local directory and then upload to db.
-        """
-        self.save_all_data_to_dir(self.save_dir_parent)
-        self.upload_to_db(self.field_key)
 
         
 
@@ -430,7 +444,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         import datetime
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         save_dir_child = self.field_key["field"] + "_" + timestamp 
-        save_dir = os.path.join(save_dir_parent,timestamp)
+        save_dir = os.path.join(save_dir_parent,save_dir_child)
                 
         os.makedirs(save_dir, exist_ok=True)
 
@@ -463,6 +477,8 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         torch.save(self.model,full_model_path)
         print(f"Saved model state dict to {model_path_state_dict}")
         print(f"Saved full model to {full_model_path}")
+
+
 
 
         # save metadata
@@ -548,8 +564,16 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         """
         pass
         ## TODO
-        
-    def select_subset_of_meis_for_each_roi(self) -> Tuple[Dict[int,List[str]], Dict[int, Dict[str, List[Any]]]]:
+    
+    @staticmethod
+    def select_subset_of_meis_for_each_roi(
+                                           neuron_data_dict: Dict[str,ResponsesTrainTestSplit],
+                                           new_session_id: str,
+                                           mei_data_container: pd.DataFrame,
+                                           readout_idx_wmei2rois: Dict[int, int],
+                                           neuron_idxs_passing_filter: List[int],
+                                           n_stimuli_total = 6,
+                                           ) -> Tuple[Dict[int,List[str]], Dict[int, Dict[str, List[Any]]]]:
         """
         Selects a subset of MEIs for rach roi to show.
         reurns dict with roi_id as key and mei_id list as value.
@@ -557,11 +581,11 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         mei_data_container,
         neuron_data_dict
         
-        Uses the following heuristic: 6 meis total: Three to four exciting and rest depressing meis 
+        Uses the following heuristic: n_stimuli_total meis total: Three to four exciting and rest depressing meis 
         1. for a given roi_id,
             i) add its own meis (one if stable, two if unstable)
             ii) if there is another cell with same type add its mei (if there are mutliple seeds or cells take random mei)
-            iii) Take a list of mei_ids sorted by response strength. fill up the list with mei_ids arrcording to the respnose strength until we reach 6.
+            iii) Take a list of mei_ids sorted by response strength. fill up the list with mei_ids arrcording to the respnose strength until we reach n_stimuli_total.
   
         reuturn two dicts:
         roi_id2mei_ids: Dict[int, List[int]]: mapping from roi_id to list of mei_ids
@@ -570,18 +594,18 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         """
         
         # 1. map readout_idxwmei to cell type
-        readout_idx_groups = self.neuron_data_dict[self.new_session_id].session_kwargs["group_assignment"]
-        readout_idx_wmei2group = {idx:readout_idx_groups[idx] for idx in self.neuron_idxs_passing_filter}
+        readout_idx_groups = neuron_data_dict[new_session_id].session_kwargs["group_assignment"]
+        readout_idx_wmei2group = {idx:readout_idx_groups[idx] for idx in neuron_idxs_passing_filter}
         
         # some checks
-        assert len(readout_idx_wmei2group) == len(self.mei_data_container['readout_idx'].unique()), "Mismatch between readout idx with meis and neuron data dict."
-        assert all([idx in readout_idx_wmei2group.keys() for idx in self.mei_data_container['readout_idx'].unique()]), "Some readout idx in mei data container not in neuron data dict."
+        assert len(readout_idx_wmei2group) == len(mei_data_container['readout_idx'].unique()), "Mismatch between readout idx with meis and neuron data dict."
+        assert all([idx in readout_idx_wmei2group.keys() for idx in mei_data_container['readout_idx'].unique()]), "Some readout idx in mei data container not in neuron data dict."
 
         
         ## fetch all mean repsonses array size (nr meis, nr readouts in model)
-        all_mean_responses = np.stack(self.mei_data_container['mean_responses_all_readout_idx'].tolist(), axis=0)
-        assert all_mean_responses.shape[0] == len(self.mei_data_container), "Mismatch between number of MEIs and mean responses."
-        assert all_mean_responses.shape[1] == len(self.neuron_data_dict[self.new_session_id].session_kwargs["group_assignment"]), "Mismatch between number of readouts in model and mean responses."        
+        all_mean_responses = np.stack(mei_data_container['mean_responses_all_readout_idx'].tolist(), axis=0)
+        assert all_mean_responses.shape[0] == len(mei_data_container), "Mismatch between number of MEIs and mean responses."
+        assert all_mean_responses.shape[1] == len(neuron_data_dict[new_session_id].session_kwargs["group_assignment"]), "Mismatch between number of readouts in model and mean responses."        
         
         ## 3. select mei ids for each roi based on the mean response in the time window and possibly cell type 
         roi_id2mei_ids = {}
@@ -597,10 +621,10 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             all_stabilites = []
             
             # get the roi_id
-            roi_id = self.readout_idx_wmei2rois[readout_idx]
+            roi_id = readout_idx_wmei2rois[readout_idx]
 
             # get all mei data for this readout idx
-            all_meis_for_readout = self.mei_data_container[self.mei_data_container['readout_idx'] == readout_idx]
+            all_meis_for_readout = mei_data_container[mei_data_container['readout_idx'] == readout_idx]
             assert len(all_meis_for_readout) > 0, f"No MEIs found for readout idx {readout_idx}."
             
             # whether stable or not
@@ -619,7 +643,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
 
             # step ii) if there is another cell with same type add its mei (if there are mutliple seeds take one random)
-            same_type_mei_entries = self.mei_data_container[self.mei_data_container['readout_idx'].isin(
+            same_type_mei_entries = mei_data_container[mei_data_container['readout_idx'].isin(
                 [idx for idx,grp in readout_idx_wmei2group.items() if grp == celltype and idx != readout_idx])]
 
             if len(same_type_mei_entries) > 0:
@@ -631,9 +655,9 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             # fill up the list with mei_ids arrcording to the respnose strength until we reach 6. 
             # definately include the strongest and weakest one
             assert 1 <= len(set(selected_mei_ids)) <= 3, f"Unexpected number of MEIs selected so far for readout idx {readout_idx}: {len(selected_mei_ids)}."
-            nr_missing_to_six = 6 - len(selected_mei_ids)
+            nr_missing_to_six = n_stimuli_total - len(selected_mei_ids)
             sorted_mei_indices = np.argsort(mean_responses_of_idx)[::-1] # descending order
-            remaining_mei_ids = [self.mei_data_container.iloc[idx]['mei_id'] for idx in sorted_mei_indices if self.mei_data_container.iloc[idx]['mei_id'] not in selected_mei_ids]
+            remaining_mei_ids = [mei_data_container.iloc[idx]['mei_id'] for idx in sorted_mei_indices if mei_data_container.iloc[idx]['mei_id'] not in selected_mei_ids]
             
             # select evely but definately include strongerst
             step_size = len(remaining_mei_ids) / nr_missing_to_six 
@@ -646,10 +670,10 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
             # to have bettwe ovreview if its all corect we add the responses and celltypes of the selected meis
             for mei_id in selected_mei_ids:
-                bool_mask_mei_ids = self.mei_data_container['mei_id'] == mei_id
+                bool_mask_mei_ids = mei_data_container['mei_id'] == mei_id
                 mei_responses.extend(mean_responses_of_idx[bool_mask_mei_ids].tolist())
-                celltypes_or_neurons_from_meis.extend([readout_idx_wmei2group[idx] for idx in self.mei_data_container[bool_mask_mei_ids]['readout_idx'].tolist()])
-                all_stabilites.extend(self.mei_data_container[bool_mask_mei_ids]['stability'].tolist())
+                celltypes_or_neurons_from_meis.extend([readout_idx_wmei2group[idx] for idx in mei_data_container[bool_mask_mei_ids]['readout_idx'].tolist()])
+                all_stabilites.extend(mei_data_container[bool_mask_mei_ids]['stability'].tolist())
 
             # store the metadata
             roi_id2info[roi_id] = {
@@ -660,10 +684,6 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
             # store the mei_ids 
             roi_id2mei_ids[roi_id] = selected_mei_ids
-
-        # store for analysis
-        self.roi_id2mei_ids = roi_id2mei_ids
-        self.roi_id2info = roi_id2info
 
         return roi_id2mei_ids, roi_id2info
 
@@ -710,17 +730,9 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
         
         ## center the readouts            
-        if self.model_configs["is_ensemble_model"]:
-            self.scaled_means_before_centering = []
-            for member in self.model.members:
-                self.scaled_means_before_centering.append(get_model_gaussian_scaled_means(member,session= self.new_session_id)) # type: ignore
-        elif isinstance(self.model, BaseCoreReadout):
-            self.scaled_means_before_centering = get_model_gaussian_scaled_means(self.model,session= self.new_session_id)
-        else:
-            raise ValueError("Model is neither ensemble nor BaseCoreReadout. Cannot center readouts.")
-        # apply centering
-        center = Center(target_mean = 0.0)
-        center(self.model)
+        self.scaled_means_before_centering = center_member_or_ensemble_readouts(model = self.model,
+                                                                                new_session_id=self.new_session_id
+                                                                                )
 
 
 
@@ -739,16 +751,18 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             neuron_ids_to_analyze = [neuron_id for neuron_id, stability in idx2stability.items() if stability == phase]
             seeds = self.seeds if phase == 'unstable' else [self.seeds[0]] # only one seed for stable meis
 
-            neuron_seed_mei_dict = generate_meis_with_n_random_seeds(
+            neuron_seed_mei_dict =  generate_opt_stim_for_neuron_list(
                                             model = self.model,
                                             new_session_id = self.new_session_id,
+                                            opt_stim_generation_params= self.mei_generation_params,
                                             random_seeds = seeds,
-                                            mei_generation_params= self.mei_generation_params,
+                                            seed_it_func= torch.manual_seed,
                                             neuron_ids_to_analyze = neuron_ids_to_analyze, # NOTE: this will optimize each id individually 
                                             set_model_to_eval_mode = set_model_to_eval_mode, # model in training mode for noisy MEIs
                                             )
             print(f"Done with meis in phase {phase}.")
             print(f"Start decomposing ...")    
+            
             ## decompose meis
             device = self.model.device if isinstance(self.model,BaseCoreReadout) else self.model.members[0].device
             for neuron_id,seed_dict in neuron_seed_mei_dict.items():
@@ -762,9 +776,9 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                     if self.mei_generation_params["reconstruct_mei"]:
                         reconstruction = reconstruct_mei_from_decomposed(
                                     temporal_kernels=temporal_kernels,
-                                    spatial_kernels=spatial_kernels,)
+                                    spatial_kernels=spatial_kernels,
+                                    turn_to_tensor=True)
 
-                        reconstruction = torch.tensor(reconstruction,dtype=torch.float32).to(device)
                         assert reconstruction.shape == mei.shape, "Reconstructed MEI shape does not match original MEI shape."
                         
                         # make reonstruction same norm as mei
@@ -792,24 +806,38 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         self.mei_data_container = pd.DataFrame(mei_data_container_entries)
         
         print(f"Generating responses for neurons in readout {len(self.neuron_idxs_passing_filter)} to all meis {len(self.mei_data_container)} ...")
-        self.get_responses_and_add_to_container()
+        self.get_responses_and_add_to_container(mei_data_container=self.mei_data_container,
+                                               model=self.model,
+                                               new_session_id=self.new_session_id,
+                                               neuron_data_dict=self.neuron_data_dict,
+                                               mei_generation_params=self.mei_generation_params,)
 
-
-    def get_responses_and_add_to_container(self) -> None:
+    @staticmethod
+    def get_responses_and_add_to_container(mei_data_container: pd.DataFrame,
+                                           model:BaseCoreReadout |EnsembleModel,
+                                           new_session_id: str,
+                                           neuron_data_dict: Dict[str,ResponsesTrainTestSplit],
+                                           mei_generation_params: Dict[str, Any]) -> None:
         """
         Adds two columns to the mei data container: 
         - one with the resonses of each neuron EACH NEURON IN READOUT to all meis THIS IS NOT FILTERED FOR QUALITY. 
         This so that later the index of the column corresponds to the index of the neuorns in the readouts. 
         - one with the mean of that response in the optiization time window."""
 
+        # make sure required cols are there
+        required_cols = ['readout_idx', 'roi_id', 'mei']
+        if not all(col in mei_data_container.columns for col in required_cols):
+            raise ValueError(f"mei_data_container must contain the following columns: {required_cols}")
+
+
         ## responses: use batch of meis
-        mei_batch = self.mei_data_container['mei'].to_list()
-        device = self.model.device if isinstance(self.model,BaseCoreReadout) else self.model.members[0].device
+        mei_batch = mei_data_container['mei'].to_list()
+        device = model.device if isinstance(model,BaseCoreReadout) else model.members[0].device
         mei_batch = torch.stack(mei_batch, dim=0).to(device)
-        all_neuron_ids_in_readout = list(range(self.neuron_data_dict[self.new_session_id].session_kwargs["roi_ids"].shape[0]))
-        all_responses = get_model_mei_response(model = self.model,
+        all_neuron_ids_in_readout = list(range(neuron_data_dict[new_session_id].session_kwargs["roi_ids"].shape[0]))
+        all_responses = get_model_mei_response(model = model,
                                                 mei=mei_batch,
-                                                session_id = self.new_session_id,
+                                                session_id = new_session_id,
                                                 neuron_id = all_neuron_ids_in_readout,)
         
         # resonses are shape nr meis, nr time points response, nr neurons in readout 
@@ -817,25 +845,25 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         assert all_responses.shape[2] == len(all_neuron_ids_in_readout)
         
         # store the responses in the data container
-        self.mei_data_container['responses_all_readout_idx'] = list(all_responses)
+        mei_data_container['responses_all_readout_idx'] = list(all_responses)
 
         # reduce responses to the mean in the response window/ optimization time window.
-        t0 =self.mei_generation_params["reducer_start"]
-        t1 = t0 + self.mei_generation_params["reducer_length"]
+        t0 = mei_generation_params["reducer_start"]
+        t1 = t0 + mei_generation_params["reducer_length"]
         all_mean_responses = np.mean(all_responses[:,t0:t1,:], axis=1) # shape (nr_meis, nr_neurons in readout )
         assert all_mean_responses.shape[0] == mei_batch.shape[0], "Number of mean responses does not match number of MEIs."
         assert all_mean_responses.shape[1] == len(all_neuron_ids_in_readout), "Number of mean responses does not match number of neurons."
-        self.mei_data_container['mean_responses_all_readout_idx'] = list(all_mean_responses)
+        mei_data_container['mean_responses_all_readout_idx'] = list(all_mean_responses)
 
 
 
 
     @staticmethod
-    def get_stable_unstable_split(readout_idxs: List[int]) -> Dict[int, str]:
+    def get_stable_unstable_split(readout_idxs: List[int],seed = 42) -> Dict[int, str]:
         """
         Randomly selects 1/5 of neurons (or two which ever is larger) to generate unstable MEIs for.
         Outputs a dict with key neuron_redout_idx, and value `stable` or `unstable`."""
-        
+        np.random.seed(seed) 
         n_unstable = max(2, len(readout_idxs) // 5)
         unstable_neurons = np.random.choice(readout_idxs, size=n_unstable, replace=False)
         stability_dict = {idx: 'unstable' if idx in unstable_neurons else 'stable' for idx in readout_idxs}
@@ -843,40 +871,60 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
 
 
-    def extract_and_preprocess(self) -> None:
+    def extract_data(self,
+                    field_key = None,) -> None:
         
-        ## model training 
-        self.session_dict_raw = self.dj_table_holder('OpenRetinaHoeflingFormat')().extract_data()
+        # check for what training mode
+        only_train_readout = self.model_configs.get("only_train_readout", True)
+
+        # extract data in hoefling format from DB
+        self.session_dict_raw = self.dj_table_holder('OpenRetinaHoeflingFormat')().extract_data(field_key=field_key)
+        all_session_keys = list(self.session_dict_raw.keys())
+        assert len(all_session_keys) == 1
+        self.new_session_id = all_session_keys[0]
+
+
+        # add the openretina training data if desired
+        if not only_train_readout:
+            responses_path_local = self.model_configs.get("responses_path_local", "")
+            assert os.path.isfile(responses_path_local), f"{responses_path_local} is not a file."
+            raw_session_loaded = load_h5_into_dict(responses_path_local)
+            
+            ### DEBUG remove keys that have 20200226 in them
+            keys_to_remove = [key for key in raw_session_loaded.keys() if '20200226' in key]
+            for key in keys_to_remove:
+                del raw_session_loaded[key]
+
+            # filter the raw seesions 
+            raw_session_loaded = filter_responses(raw_session_loaded, self.model_configs.quality_checks)
+            
+            self.session_dict_raw.update(raw_session_loaded)
+            print(f"Loaded additional openretina data from {responses_path_local} and added to session_dict_raw.")
+
         
+
+    def format_data(self) -> None:
         # preprocess and bring to open retina classes 
         self.movies_dict = load_stimuli(self.model_configs)
 
         self.neuron_data_dict =  make_final_responses(self.session_dict_raw,response_type="natural") 
-    
-    def train_model(self) -> None:
-
-        # load and refine model
-        self.model,self.neuron_testset_correls,self.best_model_ckp = train_model_online(self.model_configs,
-                                                                    self.neuron_data_dict,
-                                                                    self.movies_dict)
-
-
-        # store eome data
-        self.new_session_id = list(self.session_dict_raw.keys())[0]
         
-        # mappings from roi_id to to model_neuron idx
-        self.roi_ids2readout_idx = {roi:idx for idx,roi in enumerate(self.neuron_data_dict[self.new_session_id].session_kwargs["roi_ids"].tolist())}
 
 
 
     def compute_analysis(self, field_key,
                          roi_id_subset: Optional[List[int]] = None,
-                         progress_callback: Optional[Callable] = None) -> None:
+                         progress_callback: Optional[Callable] = None,
+                         save_local: bool = False,
+                         upload_to_db: bool = False,) -> None:
+        
+        if progress_callback is None:
+            progress_callback = lambda x: None
+
 
         # extract data in hoefling format from DB 
         if len(self.dj_table_holder('OpenRetinaHoeflingFormat')() & field_key) == 0:
-            if progress_callback is not None:
-                progress_callback(0)
+            progress_callback(0)
             
             if hasattr(self, 'field_key'):
                 if self.field_key == field_key:
@@ -887,27 +935,63 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                                     roi_id_subset=roi_id_subset,
                                     progress_callback= progress_callback)
 
-            if progress_callback is not None:
-                progress_callback(30)
+            progress_callback(30)
             
             # fetch data and train model
-            self.extract_and_preprocess()
-            self.train_model()
+            self.extract_data(field_key=field_key)
+            self.format_data()
             
+            # mappings from roi_id to to model_neuron idx
+            self.roi_ids2readout_idx = {roi:idx for idx,roi in enumerate(self.neuron_data_dict[self.new_session_id].session_kwargs["roi_ids"].tolist())}
+
+            
+            # get dataloader
+            dataloaders, data_info = get_dataloaders_and_data_info(
+                cfg = self.model_configs,
+                neuron_data_dict = self.neuron_data_dict,
+                movies_dict = self.movies_dict,
+            )
+
+            # train or refine model
+            self.model,self.best_model_ckp = train_or_refine_member_or_ensemble(
+                model_configs = self.model_configs,
+                dataloaders = dataloaders,
+                data_info = data_info,
+            )
+
+            # evaluate model
+            all_preds, all_targets = get_single_neuron_split_predictions(
+                dataloaders = dataloaders,
+                model = self.model,
+                split = 'test',
+                only_this_session_id = self.new_session_id, # only for the new session 
+                )
+            
+            self.neuron_testset_correls = get_single_neuron_session_correlations(
+            all_preds = all_preds,
+            all_targets = all_targets,)            
+            progress_callback(70)
+            
+
             # quality filter neurons
             self.apply_quality_filter()   
 
-            if progress_callback is not None:
-                progress_callback(60)
+            progress_callback(60)
 
             ## MEI generation
             self.mei_subanalysis()
 
-            if progress_callback is not None:
-                progress_callback(100)
+            progress_callback(100)
             
-            self.save_local_and_upload()
+            # save locally
+            if save_local:
+                self.save_all_data_to_dir(save_dir_parent=self.save_dir_parent)
             
+            # upload to db
+            if upload_to_db:
+                self.upload_to_db(field_key)
+            
+
 
         else:
             print("OpenRetinaHoeflingFormat table is already populated for the given field_key. Skipping analysis.")

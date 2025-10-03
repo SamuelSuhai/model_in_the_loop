@@ -1575,7 +1575,7 @@ class ExtendedAutoRoiGui(RoiCanvasData):
             self.log(f'Updating analysis plot for {self._selected_analysis_type}')
 
             # plot1 shows the figure 
-            self.dj_wrappers_dict[self._selected_analysis_type].plot1(field_key = self.field_key,roi_id= self._selected_roi)
+            self.dj_wrappers_dict[self._selected_analysis_type].plot1(field_key = self.field_key, roi_id= self._selected_roi)
 
    
 

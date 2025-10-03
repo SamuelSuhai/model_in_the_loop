@@ -77,6 +77,34 @@ class STAWrapper(DJComputeWrapper):
             # populate the necessary tables
             self.dj_table_holder(table_name)().populate(complete_restriction,processes=self.dj_table_holder.multiprocessing_threads, display_progress=True)
     
+    def list_top_n_rois_by_qidx(self, 
+                               field_key: Dict[str, Any], 
+                               n: int = 10) -> tuple[List[int],List[float]]:
+        """
+        Lists the top N ROIs based on their rf_qidx values from the FitGauss2DRF table.
+        """
+        fit_gauss_table = self.dj_table_holder('FitGauss2DRF')() & field_key
+
+        if len(fit_gauss_table) == 0:
+            raise ValueError("FitGauss2DRF table is empty for the given field_key")
+        
+        # Fetch all roi_ids and their corresponding qidx values
+        roi_ids, qidx_values = fit_gauss_table.fetch('roi_id', 'rf_qidx')
+
+        # Combine roi_ids and qidx_values into a list of tuples and sort by qidx in descending order
+        roi_qidx_pairs = sorted(zip(roi_ids, qidx_values, strict=True), key=lambda x: x[1], reverse=True)
+
+        # Select the top N entries
+        top_n_pairs = roi_qidx_pairs[:n]
+
+        # Convert to list of dictionaries for better readability
+        top_n_rois,top_n_scores = zip(*top_n_pairs) if top_n_pairs else ([],[])
+
+        # convert elements to int 
+        top_n_rois = [int(roi) for roi in top_n_rois]
+
+        return list(top_n_rois),list(top_n_scores)
+
     def get_roi_ids_passing_criterion(self, 
                                       field_key: Dict[str, Any], 
                                       rf_qidx_min: float = 0.5,) -> List[int]:
@@ -94,7 +122,7 @@ class STAWrapper(DJComputeWrapper):
 
         # Filter roi_ids based on the criteria
         passing_roi_ids = [
-            roi_id for roi_id, qidx in zip(roi_ids, qidx_values, strict=True) if qidx >= rf_qidx_min
+            int(roi_id) for roi_id, qidx in zip(roi_ids, qidx_values, strict=True) if qidx >= rf_qidx_min
         ]
 
         return passing_roi_ids

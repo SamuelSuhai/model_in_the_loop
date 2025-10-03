@@ -324,17 +324,22 @@ class OpenRetinaHoeflingFormatTemplate(dj.Manual):
         return key_str
     
 
-    def extract_data(self) -> Dict[str, Dict] | None:
+    def extract_data(self,field_key: Dict[str, Any] | None = None) -> Dict[str, Dict] | None:
         """ Extracts all the data for the model from the database. 
         """
         
-        # get the key for the iteration
-        key = (self.field_table - self).proj().fetch(as_dict=True)[0]
-        if self.ignore_iteration_as_primary_key:
-            key.pop("cond1") # remove iteration dependence because we want to get all stimuli
+        if field_key is None:
+            # get the key for the iteration
+            missing_keys = (self.field_table - self).proj().fetch(as_dict=True)
+            if len(missing_keys) != 1:
+                raise ValueError(f"Expected exactly one missing key in ")
+            field_key = missing_keys[0]
+
+        # if self.ignore_iteration_as_primary_key:
+        #     field_key.pop("cond1") # remove iteration dependence because we want to get all stimuli
 
         # get all iteration data in long format:
-        all_iter_data = self.get_query(key)
+        all_iter_data = self.get_query(field_key)
 
         if len(all_iter_data) == 0:
             return None
@@ -373,7 +378,7 @@ class OpenRetinaHoeflingFormat(OpenRetinaHoeflingFormatTemplate):
     retinal_roi_location_table = RetinalRoiLocation
     
 
-class OnlineOptimizedStimulusTemplate(dj.Manual):
+class OnlineOptimizedStimuliTemplate(dj.Manual):
     database = ""
     
 
@@ -384,7 +389,7 @@ class OnlineOptimizedStimulusTemplate(dj.Manual):
         -> self.openretina_hoefling_format_table  # the table that contains the Open Retina Hoefling format (dummy) data
         roi_id:         int
         readout_idx:    int  # the index of the readout neuron in the model
-        objective_name: str  # the objective used to generate the stim
+        objective_name: varchar(100)  # the objective used to generate the stim
         ---
         stimulus:       longblob    # np.ndarray of shape (batch,channel,time,height,width)
         """
@@ -412,12 +417,12 @@ class StimulusDecompositionTemplate(dj.Manual):
         -> self.online_optimized_stimulus_table  # the table that contains the Open Retina Hoefling format (dummy) data
         roi_id:         int
         readout_idx:    int  # the index of the readout neuron in the model
-        objective_name: str  # the objective used to generate the stim
+        objective_name: varchar(100)  # the objective used to generate the stim
         ---
         ch0_temporal_kernels:   longblob    # np.ndarray 
-        ch0_spatial_kernels    longblob    # np.ndarray 
+        ch0_spatial_kernels:    longblob    # np.ndarray 
         ch1_temporal_kernels:   longblob    # np.ndarray 
-        ch1_spatial_kernels    longblob    # np.ndarray
+        ch1_spatial_kernels:    longblob    # np.ndarray
         """
         return definition
 
