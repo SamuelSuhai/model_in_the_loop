@@ -566,16 +566,16 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         ## TODO
     
     @staticmethod
-    def select_subset_of_meis_for_each_roi(
+    def select_subset_of_meis_for_each_roi( only_consider_these_rois: List[int],
                                            neuron_data_dict: Dict[str,ResponsesTrainTestSplit],
                                            new_session_id: str,
                                            mei_data_container: pd.DataFrame,
                                            readout_idx_wmei2rois: Dict[int, int],
-                                           neuron_idxs_passing_filter: List[int],
                                            n_stimuli_total = 6,
                                            ) -> Tuple[Dict[int,List[str]], Dict[int, Dict[str, List[Any]]]]:
         """
-        Selects a subset of MEIs for rach roi to show.
+        Selects which MEIs to show what rois.
+        only_consider_these_rois contains all the ROIs that we want to stimulate and that require a list of mei_ids. Only MEIs from these ROIs are considered (also for validataion).
         reurns dict with roi_id as key and mei_id list as value.
         requieres (takes from self):
         mei_data_container,
@@ -592,20 +592,31 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         roi_id2info: Dict[int, Dict[str, Any]]: mapping from roi_id to dict with info about the selected meis (stability, celltype, responses
 
         """
-        
+
+        # 0. First: subset the data so we only perform this analysis on selected ROIs:
+        readout_idxs_of_interest = [readout_idx for readout_idx,roi in readout_idx_wmei2rois.items() if roi in only_consider_these_rois]
+        if len(readout_idxs_of_interest) == len(only_consider_these_rois): 
+            raise ValueError("Mismatch between readout idx of interest and roi ids of interest.perhaps you selected a roi id that does not have an mei?")
+
+        mei_is_of_desired_roi = mei_data_container['readout_idx'].isin(readout_idxs_of_interest)
+        sub_mei_data_container = mei_data_container[mei_is_of_desired_roi]
+        assert len(sub_mei_data_container) > 0, "No MEIs found for the given ROIs of interest."
+
+
         # 1. map readout_idxwmei to cell type
-        readout_idx_groups = neuron_data_dict[new_session_id].session_kwargs["group_assignment"]
-        readout_idx_wmei2group = {idx:readout_idx_groups[idx] for idx in neuron_idxs_passing_filter}
+        all_readout_idx_groups = neuron_data_dict[new_session_id].session_kwargs["group_assignment"]
+        readout_idx_wmei2group = {idx:all_readout_idx_groups[idx] for idx in readout_idxs_of_interest}
         
+
         # some checks
-        assert len(readout_idx_wmei2group) == len(mei_data_container['readout_idx'].unique()), "Mismatch between readout idx with meis and neuron data dict."
-        assert all([idx in readout_idx_wmei2group.keys() for idx in mei_data_container['readout_idx'].unique()]), "Some readout idx in mei data container not in neuron data dict."
+        assert len(readout_idx_wmei2group) == len(sub_mei_data_container['readout_idx'].unique()), "Mismatch between readout idx with meis and neuron data dict."
+        assert all([idx in readout_idx_wmei2group.keys() for idx in sub_mei_data_container['readout_idx'].unique()]), "Some readout idx in mei data container not in neuron data dict."
 
         
         ## fetch all mean repsonses array size (nr meis, nr readouts in model)
-        all_mean_responses = np.stack(mei_data_container['mean_responses_all_readout_idx'].tolist(), axis=0)
-        assert all_mean_responses.shape[0] == len(mei_data_container), "Mismatch between number of MEIs and mean responses."
-        assert all_mean_responses.shape[1] == len(neuron_data_dict[new_session_id].session_kwargs["group_assignment"]), "Mismatch between number of readouts in model and mean responses."        
+        all_readout_idx_mean_responses = np.stack(sub_mei_data_container['mean_responses_all_readout_idx'].tolist(), axis=0)
+        assert all_readout_idx_mean_responses.shape[0] == len(sub_mei_data_container), "Mismatch between number of MEIs and mean responses."
+        assert all_readout_idx_mean_responses.shape[1] == len(neuron_data_dict[new_session_id].session_kwargs["group_assignment"]), "Mismatch between number of readouts in model and mean responses."        
         
         ## 3. select mei ids for each roi based on the mean response in the time window and possibly cell type 
         roi_id2mei_ids = {}
@@ -624,7 +635,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             roi_id = readout_idx_wmei2rois[readout_idx]
 
             # get all mei data for this readout idx
-            all_meis_for_readout = mei_data_container[mei_data_container['readout_idx'] == readout_idx]
+            all_meis_for_readout = sub_mei_data_container[sub_mei_data_container['readout_idx'] == readout_idx]
             assert len(all_meis_for_readout) > 0, f"No MEIs found for readout idx {readout_idx}."
             
             # whether stable or not
@@ -632,7 +643,12 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             assert all_meis_for_readout['stability'].nunique() == 1, f"Mixed stability for readout idx {readout_idx}."
 
             # the mean repsonses in the optimization window
-            mean_responses_of_idx = all_mean_responses[:, readout_idx] # shape (nr_meis,) 
+            mean_responses_of_idx = all_readout_idx_mean_responses[:, readout_idx] # shape (nr_meis,) 
+            assert mean_responses_of_idx.shape[0] == mei_is_of_desired_roi.shape[0], "Mismatch between number of MEIs and mean responses array length,"
+            
+            # since we took  a subset of mei_data_container we need to only take certain indices of mean_responses_of_idx again 
+            mean_responses_of_idx = mean_responses_of_idx[mei_is_of_desired_roi]
+            assert mean_responses_of_idx.shape[0] == len(sub_mei_data_container), "Mismatch between number of MEIs in subset and mean responses array length after subsetting."
             
             # 3 b) decide on mei_ids accroding to heuristic
             # step i) add its own meis (one if stable, two if unstable)
@@ -643,7 +659,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
 
             # step ii) if there is another cell with same type add its mei (if there are mutliple seeds take one random)
-            same_type_mei_entries = mei_data_container[mei_data_container['readout_idx'].isin(
+            same_type_mei_entries = sub_mei_data_container[sub_mei_data_container['readout_idx'].isin(
                 [idx for idx,grp in readout_idx_wmei2group.items() if grp == celltype and idx != readout_idx])]
 
             if len(same_type_mei_entries) > 0:
@@ -655,13 +671,13 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             # fill up the list with mei_ids arrcording to the respnose strength until we reach 6. 
             # definately include the strongest and weakest one
             assert 1 <= len(set(selected_mei_ids)) <= 3, f"Unexpected number of MEIs selected so far for readout idx {readout_idx}: {len(selected_mei_ids)}."
-            nr_missing_to_six = n_stimuli_total - len(selected_mei_ids)
+            nr_missing = n_stimuli_total - len(selected_mei_ids)
             sorted_mei_indices = np.argsort(mean_responses_of_idx)[::-1] # descending order
-            remaining_mei_ids = [mei_data_container.iloc[idx]['mei_id'] for idx in sorted_mei_indices if mei_data_container.iloc[idx]['mei_id'] not in selected_mei_ids]
+            remaining_mei_ids = [sub_mei_data_container.iloc[idx]['mei_id'] for idx in sorted_mei_indices if sub_mei_data_container.iloc[idx]['mei_id'] not in selected_mei_ids]
             
             # select evely but definately include strongerst
-            step_size = len(remaining_mei_ids) / nr_missing_to_six 
-            for i in range(nr_missing_to_six - 1): # -1 because we add the weakest one at the end
+            step_size = len(remaining_mei_ids) / nr_missing 
+            for i in range(nr_missing - 1): # -1 because we add the weakest one at the end
                 selected_mei_ids.append(remaining_mei_ids[int(i * step_size)])
 
             
@@ -670,10 +686,10 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
             # to have bettwe ovreview if its all corect we add the responses and celltypes of the selected meis
             for mei_id in selected_mei_ids:
-                bool_mask_mei_ids = mei_data_container['mei_id'] == mei_id
+                bool_mask_mei_ids = sub_mei_data_container['mei_id'] == mei_id
                 mei_responses.extend(mean_responses_of_idx[bool_mask_mei_ids].tolist())
-                celltypes_or_neurons_from_meis.extend([readout_idx_wmei2group[idx] for idx in mei_data_container[bool_mask_mei_ids]['readout_idx'].tolist()])
-                all_stabilites.extend(mei_data_container[bool_mask_mei_ids]['stability'].tolist())
+                celltypes_or_neurons_from_meis.extend([readout_idx_wmei2group[idx] for idx in sub_mei_data_container[bool_mask_mei_ids]['readout_idx'].tolist()])
+                all_stabilites.extend(sub_mei_data_container[bool_mask_mei_ids]['stability'].tolist())
 
             # store the metadata
             roi_id2info[roi_id] = {
@@ -995,4 +1011,5 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
         else:
             print("OpenRetinaHoeflingFormat table is already populated for the given field_key. Skipping analysis.")
+
             

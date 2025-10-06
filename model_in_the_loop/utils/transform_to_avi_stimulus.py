@@ -301,7 +301,7 @@ def transform_to_qdspy_coord(stimulus_table,
     all_y_um = []
     for x_pix,y_pix in zip(all_x_pix_list, all_y_pix_list):
 
-        # add center in pixels (considering idx 0 base)
+        # subtract center in pixels (considering idx 0 base)
         x_pix = x_pix - x_center_pix
         y_pix = y_pix - y_center_pix
 
