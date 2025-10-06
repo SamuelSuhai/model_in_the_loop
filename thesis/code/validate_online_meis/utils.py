@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from typing import List, Dict, Any
 
 
 def load_file_from_pickle(file_path):
@@ -163,7 +164,7 @@ def plot_multiple_trf_temp_kernel_comparisons(
         handles,
         labels,
         loc='upper center',
-        bbox_to_anchor=(0.5, 1.0),
+        bbox_to_anchor=(0.5, 1.01),
         ncol=2,
         frameon=False
     )
@@ -254,3 +255,103 @@ def prepare_trf_kernel_data_for_plotting(
         result['celltypes'] = [f'ROI {roi_id}' for roi_id in roi_ids]
     
     return result
+
+
+
+
+
+
+##################################################################### ROI subset selection plotting /data utils #######
+
+def load_wrapper_data_for_subset_selection(wrapper_save_dir: str):
+    """
+    Given dir where RandomSeedMEIWrapper data is saved, load the relevant data.
+    mei_data_container: pd.DataFrame
+    neuron_data_dict: Dict[int, NeuronData]
+
+    metadata: Dict (from here it gets new_session_id and readout_idx_wmei2rois)
+    """
+    mei_data_container = load_file_from_pickle(f"{wrapper_save_dir}/mei_data_container.pkl")
+    neuron_data_dict = load_file_from_pickle(f"{wrapper_save_dir}/neuron_data_dict.pkl")    
+    metadata = load_file_from_pickle(f"{wrapper_save_dir}/metadata.pkl")
+    new_session_id = metadata['new_session_id']
+    roi2readout_idx_wmeis = metadata['roi2readout_idx_wmeis']
+    return mei_data_container, neuron_data_dict, new_session_id, roi2readout_idx_wmeis
+
+
+def plot_responses_and_mei_info_one_roi(
+        roi_id: int,
+        roi_id2mei_ids: Dict[int, List[str]],
+        roi_id2info: Dict[int, Dict[str, Any]],
+        verbose = True,
+        figsize: tuple[int,...] =(10, 6),
+        ax = None,
+
+    ):
+
+    """
+    Plot for a given roi_id:
+    On the x axis the MEI ids as tick labels and in parenthesis in a row below either:
+        1. own (if its the mei of the roi ie roi_id is in mei_id)
+        2. same celltype (if the mei is from a different roi but same celltype)
+        otherwise nothing.
+    roi_id2mei_ids: dict from roi id to mei ids list
+    roi_id2info: dict from roi id to dict with keys:
+        "all_stabilities": stabilities of the roi in key to the meis we have in roi_id2mei_ids[roi_id],
+        "celltype": celltypes of the roi in key to the meis we have in roi_id2mei_ids[roi_id],
+        "responses": mei_responses of the roi in key to the meis we have in roi_id2mei_ids[roi_id]
+    }
+
+
+    """
+    # Get data for this ROI
+    mei_ids = roi_id2mei_ids[roi_id]
+    responses = roi_id2info[roi_id]["responses"]
+    celltypes = roi_id2info[roi_id]["celltype"]
+    if verbose:
+        print(f"All responses {responses}\nall celltypes {celltypes}\nall meis {mei_ids}")
+    
+    # Create figure and axis
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.figure
+    # Plot bars
+    bars = ax.bar(range(len(mei_ids)), responses)
+    
+    # Add labels and annotations
+    ax.set_xticks(range(len(mei_ids)))
+    
+    # Create second row of labels
+    labels = []
+    for i, mei_id in enumerate(mei_ids):
+        # Check if this is the ROI's own MEI
+        if f"roi_{roi_id}" in mei_id:
+            labels.append(f"{mei_id}\n(own)")
+        # Check if it's the same cell type
+        elif celltypes[i] == celltypes[0]:  # Compare to this ROI's cell type
+            labels.append(f"{mei_id}\n(same type)")
+        else:
+            labels.append(mei_id)
+    
+    ax.set_xticklabels(labels, rotation=45, ha='right')
+    
+    # Set titles and labels
+    ax.set_title(f'Responses for ROI {roi_id}')
+    ax.set_ylabel('Response Strength')
+    
+    # Add stability info as color
+    for i, (bar, stability) in enumerate(zip(bars, roi_id2info[roi_id]["all_stabilities"])):
+        color = 'skyblue' if stability == 'stable' else 'salmon'
+        bar.set_color(color)
+    
+    # Add legend
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor='skyblue', label='Stable MEI'),
+        Patch(facecolor='salmon', label='Unstable MEI')
+    ]
+    ax.legend(handles=legend_elements)
+    
+    return fig,ax
+
