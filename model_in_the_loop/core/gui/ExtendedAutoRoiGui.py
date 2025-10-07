@@ -1940,9 +1940,12 @@ def load_stack_data(files, data_name, alt_name, from_raw_data,
     return ch0_stacks, ch1_stacks, output_files
 
 
-def check_db_for_initial_roi_mask(roi_mask_table, field_key) -> tuple[None,None] | tuple[np.ndarray, list[np.ndarray]]:
+def check_db_for_initial_roi_mask(roi_mask_table, 
+                                  field_key,
+                                  pres_names = None) -> tuple[None,None] | tuple[np.ndarray, list[np.ndarray]]:
     """Check if there is already a mask in the database for the current field.
     reutrn roi mask and shifts if found, else None,None.
+    if pres_names is specified it returns them in the order of pres_names
     NOTE: roi_masks in dj are in igor format, and I convert them to python format"""
     from djimaging.utils.mask_format_utils import as_python_format
 
@@ -1956,8 +1959,14 @@ def check_db_for_initial_roi_mask(roi_mask_table, field_key) -> tuple[None,None]
     roi_mask_new = as_python_format(roi_mask_new)
 
     # retrieve the shifts
-    shift_dx,shift_dy = (field_roi_mask_tab.RoiMaskPresentation() & field_key).fetch('shift_dx', 'shift_dy')
-    shifts = [np.array([dx, dy]) for dx, dy in zip(shift_dx, shift_dy,strict=True)]
+    if pres_names is not None:
+        shifts = []
+        for pres_key in pres_names:
+            dx,dy = (field_roi_mask_tab.RoiMaskPresentation() & field_key & pres_key).fetch1('shift_dx', 'shift_dy')
+            shifts.append(np.array([dx, dy]))
+    else:
+        shift_dx,shift_dy = (field_roi_mask_tab.RoiMaskPresentation() & field_key).fetch('shift_dx', 'shift_dy')
+        shifts = [np.array([dx, dy]) for dx, dy in zip(shift_dx, shift_dy,strict=True)]
 
     return roi_mask_new,shifts
 
@@ -2066,7 +2075,8 @@ def get_roi_canvas_data_from_DJTableHolder(dj_table_holder: DJTableHolder,
 
 
         # check if there already are roi masks for this field
-        initial_roi_mask, shifts = check_db_for_initial_roi_mask(roi_mask_table, field_key)
+        initial_roi_mask, shifts = check_db_for_initial_roi_mask(roi_mask_table, field_key, pres_names=pres_names)
+
 
 
         # return all the self.attributes

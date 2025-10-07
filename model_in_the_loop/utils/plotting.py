@@ -1,8 +1,8 @@
 import matplotlib.pyplot as plt
 
+from typing import Tuple
 
-
-def show_all_rois_plot(dj_table_holder,wrapper,field_key):
+def show_all_rois_plot(dj_table_holder,wrapper,field_key) -> Tuple[plt.Figure, plt.Axes]:
 
 
     # different way of getting rois for different wrappers

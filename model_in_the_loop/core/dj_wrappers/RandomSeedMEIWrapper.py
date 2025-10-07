@@ -28,6 +28,7 @@ from model_in_the_loop.utils.model_training import (load_stimuli,
                                                     get_dataloaders_and_data_info,
                                             )
 from model_in_the_loop.utils.mei_subset_selection import select_subset_of_meis_for_each_roi
+from model_in_the_loop.utils.stimulus_optimization import generate_deis
 
 from model_in_the_loop.utils.simple_logging import log
 
@@ -643,14 +644,29 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
         # initialize mei data containter
         mei_data_container_entries = []
 
-        ## generate meis
+        # ## generate meis
+        # for phase in ['unstable', 'stable']:
+        #     print(f"Generating {phase} MEIs for neurons (readout idx): {[idx for idx,stab in idx2stability.items() if stab ==phase ]}.")
+        #     log(f"Generating {phase} MEIs for neurons (readout idx): {[idx for idx,stab in idx2stability.items() if stab == phase ]}.")
+        #     set_model_to_eval_mode = True if phase == 'stable' else False
+        #     neuron_ids_to_analyze = [neuron_id for neuron_id, stability in idx2stability.items() if stability == phase]
+        #     seeds = self.seeds if phase == 'unstable' else [self.seeds[0]] # only one seed for stable meis
+        #     neuron_seed_mei_dict =  generate_opt_stim_for_neuron_list(
+        #                                     model = self.model,
+        #                                     new_session_id = self.new_session_id,
+        #                                     opt_stim_generation_params= self.mei_generation_params,
+        #                                     random_seeds = seeds,
+        #                                     seed_it_func= torch.manual_seed,
+        #                                     neuron_ids_to_analyze = neuron_ids_to_analyze, # NOTE: this will optimize each id individually 
+        #                                     set_model_to_eval_mode = set_model_to_eval_mode, # model in training mode for noisy MEIs
+        #                                     )
+        #     print(f"Done with meis in phase {phase}.")
+        
+        seeds = [self.seeds[0]] 
         for phase in ['unstable', 'stable']:
             print(f"Generating {phase} MEIs for neurons (readout idx): {[idx for idx,stab in idx2stability.items() if stab ==phase ]}.")
             log(f"Generating {phase} MEIs for neurons (readout idx): {[idx for idx,stab in idx2stability.items() if stab == phase ]}.")
-            set_model_to_eval_mode = True if phase == 'stable' else False
             neuron_ids_to_analyze = [neuron_id for neuron_id, stability in idx2stability.items() if stability == phase]
-            seeds = self.seeds if phase == 'unstable' else [self.seeds[0]] # only one seed for stable meis
-
             neuron_seed_mei_dict =  generate_opt_stim_for_neuron_list(
                                             model = self.model,
                                             new_session_id = self.new_session_id,
@@ -658,11 +674,34 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                                             random_seeds = seeds,
                                             seed_it_func= torch.manual_seed,
                                             neuron_ids_to_analyze = neuron_ids_to_analyze, # NOTE: this will optimize each id individually 
-                                            set_model_to_eval_mode = set_model_to_eval_mode, # model in training mode for noisy MEIs
+                                            set_model_to_eval_mode = True, 
                                             )
             print(f"Done with meis in phase {phase}.")
-            print(f"Start decomposing ...")    
             
+            ## DEIS
+            if phase == "unstable":
+                # replace the meis with DEIS and add a second seed as key
+                print(f"DEI GENERATION... ADD SECOND SEED DEI")
+                # diversify 
+                for neuron,seed_mei_dict in neuron_seed_mei_dict.items():
+                    assert len(seed_mei_dict) == 1, "Expected only one seed for DEIS generation."
+                    mei = seed_mei_dict[self.seeds[0]]
+                    print(f"DIVERSIFYING MEI neuron id {neuron} with seed {self.seeds[0]} ...")
+                    deis = generate_deis(
+                        model=self.model,
+                        mei = mei,
+                        neuron_id = neuron,
+                        session_id = self.new_session_id,
+                        n_deis= len(self.seeds),
+                        opt_stim_generation_params= self.mei_generation_params,
+                    )
+                    neuron_seed_mei_dict[neuron] = {seed:deis[i] for i,seed in enumerate(self.seeds)}
+            
+
+
+
+            
+            print(f"Start decomposing ...")    
             ## decompose meis
             device = self.model.device if isinstance(self.model,BaseCoreReadout) else self.model.members[0].device
             for neuron_id,seed_dict in neuron_seed_mei_dict.items():
@@ -687,17 +726,18 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                         print(f"new reconstruction norm {torch.norm(reconstruction)}")
                         mei = reconstruction # use the reconstructed MEI for further analysis
                         print(f"Done reconstructing MEI for neuron (readout idx) {neuron_id}, seed {seed}.")
-                        # add entry to data container 
-                        mei_data_container_entries.append({
-                            "readout_idx": neuron_id,
-                            "roi_id": self.readout_idx_wmei2rois[neuron_id],
-                            "mei_id": f"roi_{self.readout_idx_wmei2rois[neuron_id]}_seed_{seed}",
-                            "seed": seed,
-                            "mei": mei.detach(),
-                            "temporal_kernels": temporal_kernels,
-                            "spatial_kernels": spatial_kernels,
-                            "stability": phase,
-                        })
+                    
+                    # add entry to data container 
+                    mei_data_container_entries.append({
+                        "readout_idx": neuron_id,
+                        "roi_id": self.readout_idx_wmei2rois[neuron_id],
+                        "mei_id": f"roi_{self.readout_idx_wmei2rois[neuron_id]}_seed_{seed}",
+                        "seed": seed,
+                        "mei": mei.detach(),
+                        "temporal_kernels": temporal_kernels,
+                        "spatial_kernels": spatial_kernels,
+                        "stability": phase,
+                    })
             
 
                         

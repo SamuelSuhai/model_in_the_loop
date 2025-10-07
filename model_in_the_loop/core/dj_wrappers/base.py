@@ -391,7 +391,11 @@ class Preprocessor:
 
         roi_canvas = self.dj_table_holder('RoiMask')().draw_roi_mask(field_key=field_key, canvas_width=30)
         
-        # execute autorois for the main stack
+        # execute autorois for the main stim index 
+        if self.debug:
+            print(f"Executing autorois for main stim idx {roi_canvas.main_stim_idx} which is {roi_canvas.pres_names[roi_canvas.main_stim_idx]}")
+        main_stim_key = roi_canvas.pres_names[roi_canvas.main_stim_idx]
+        roi_canvas.set_selected_stim(main_stim_key)
         roi_canvas.exec_autorois_all()
         
         # apply autoshoft to all stimuli except the main one

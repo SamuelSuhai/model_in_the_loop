@@ -531,6 +531,7 @@ def create_rf_test_dir(
         stimulus_table: Any,
         fit_gauss_2d_rf_table: Any,
         abs_save_dir: str,
+        field_restriction: Dict[str,Any]={},
     ) -> None:
     """
     Wrapper for RF test stimulus doing 3 things: 
@@ -550,6 +551,7 @@ def create_rf_test_dir(
         roi_ids_list,
         stimulus_table=stimulus_table,
         gauss_rf_fit_table=fit_gauss_2d_rf_table,
+        field_restriction=field_restriction,
     )
     log(f"Extracted the followin peak values for ROIs {initial_roi_id_order}:\nx {rf_mean_x_um}, \ny{rf_mean_y_um}.")
     print(f"Initial roi_id order: {initial_roi_id_order}.")
@@ -562,7 +564,8 @@ def create_rf_test_dir(
     reordered_roi_ids: List[int] = [initial_roi_id_order[i] for i in presentation_ordering_idx]
     reordered_rf_mean_x_um = [rf_mean_x_um[i] for i in presentation_ordering_idx]
     reordered_rf_mean_y_um = [rf_mean_y_um[i] for i in presentation_ordering_idx]
-
+    assert len(reordered_roi_ids) == len(roi_ids_list), "Length mismatch after reordering."
+    assert set(reordered_roi_ids) == set(roi_ids_list), "Reordered roi_ids do not match input roi_ids_list."
     log(f"Presentation ordering indices: {presentation_ordering_idx}\n corresponds to roi_id ordering of {reordered_roi_ids}.")
     print(f"Reordered roi_id order: {reordered_roi_ids}.")
 
@@ -625,8 +628,12 @@ def create_single_mei_avis_and_metadata(
     ################# decide on positioning and play sequence ##################
     
     ## filter roi_id2mei_id dict to only have the rois_selected as keys
+    n_before = len(roi_id2mei_ids)
     roi_id2mei_ids = {roi_id: mei_ids for roi_id, mei_ids in roi_id2mei_ids.items() if roi_id in rois_selected}
-
+    n_after = len(roi_id2mei_ids)
+    if n_before != n_after:
+        log(f"Filtered roi_id2mei_ids dict to only have selected ROIs. Before: {n_before}, after: {n_after}.")
+        print(f"Filtered roi_id2mei_ids dict to only have selected ROIs. Before: {n_before}, after: {n_after}.")
 
     ## 1) get the positions and their ordering
     rf_mean_x_um, rf_mean_y_um, initial_roi_id_order = extract_rf_means_from_selected_rois(
@@ -646,7 +653,9 @@ def create_single_mei_avis_and_metadata(
     reordered_roi_ids: List[int] = [initial_roi_id_order[i] for i in presentation_ordering_idx]
     reordered_rf_mean_x_um = [rf_mean_x_um[i] for i in presentation_ordering_idx]
     reordered_rf_mean_y_um = [rf_mean_y_um[i] for i in presentation_ordering_idx]
-
+    assert len(reordered_roi_ids) == len(rois_selected), "Length mismatch after reordering."
+    assert set(reordered_roi_ids) == set(rois_selected), "Reordered roi_ids do not match input roi_ids_list."
+ 
     log(f"Presentation ordering indices: {presentation_ordering_idx}\n corresponds to roi_id ordering of {reordered_roi_ids}.")
     print(f"Reordered roi_id order: {reordered_roi_ids}.")
 
@@ -670,7 +679,7 @@ def create_single_mei_avis_and_metadata(
 
     id_meis = extract_selected_meis(roi_id2mei_ids=roi_id2mei_ids,
                                     mei_data_container=mei_data_container)
-
+    print(f"Extracted {len(id_meis)} unique MEIs from data container: {list(id_meis.keys())}.")
 
     # 3)  retrieve meis and save as avis
     retrieved_mei_ids = process_meis_and_save_as_avis(

@@ -100,6 +100,76 @@ class DecreaseObjective(AbstractObjective):
         return single_score
 
 
+class DiverselyIncreaseObjective(AbstractObjective):
+    """
+    Implements the diverse exciting stimuli objectife funciton by Ding 2025. 
+
+    It takes: 
+    - a list of stimuli (should be the MEI + some noise added)
+    - the response to the MEI
+    - d_weight: the hyperparameter weighing the diverity term
+    - frac_max_response: at what activity, relative to MEI actiity, 
+        the neural response should be increased again
+    - rf_mask: spatio temporal rf mask
+
+    
+    """
+    def __init__(self, 
+                 model, 
+                 neuron_indices: list[int] | int, 
+                 data_key: str | None, 
+                 response_reducer: ResponseReducer,
+                 d_weight: float,
+                 frac_max_response: float,
+                 response_mei: float,
+                 rf_mask: torch.Tensor,
+                 ):
+    
+        super().__init__(model, data_key)
+        self._neuron_indices = [neuron_indices] if isinstance(neuron_indices, int) else neuron_indices
+        self._response_reducer = response_reducer
+        self.d_weight = d_weight
+        self.frac_max_response = frac_max_response
+        self.response_mei = response_mei
+        self.rf_mask = rf_mask # (1,channels, time, width, height)
+
+    def forward(self, deis:torch.Tensor) -> torch.Tensor:
+        """
+        For how, individual DEIs are seen as one example from the batch of stimuli
+        Each DEI is a stimulus of shape (channels,time,width,height),"""
+
+        # ??? set stim parts outside rf to zero
+        deis = deis * self.rf_mask # (batch,channels,time,width,height)
+     
+        ### part of the objective keeping responses high
+        responses = self.model_forward(deis) # responses.shape = (dei,time, neuron)
+
+        selected_responses = responses[:,:, self._neuron_indices]
+        mean_response = selected_responses.mean(dim=-1)
+        # average over time dimension
+        single_score = self._response_reducer.forward(mean_response)
+        # assert torch.all(single_score <= self.response_mei), "This should not happen... \
+        #     maybe MEI has differet response reducer than DEIs now?"
+        
+        # only if the rsponse is below the threshold, we want to increase it
+        diff_from_contribution_threshold = self.frac_max_response - single_score / self.response_mei
+        increase_part = torch.sum(diff_from_contribution_threshold[diff_from_contribution_threshold > 0]) / diff_from_contribution_threshold.shape[0]
+
+  
+
+        ### diversity part: the negative of the minimum pariwise euclidian distance
+        deis_flat = deis.view(deis.shape[0], -1)
+        pw_dists = torch.cdist(deis_flat,deis_flat, p=2)
+        
+        # Create mask for non-diagonal elements
+        non_diag_mask = ~torch.eye(pw_dists.shape[0], dtype=bool, device=pw_dists.device)
+        non_diag_dists = pw_dists[non_diag_mask]
+        min_pw_dist = torch.min(non_diag_dists)
+
+        total_score = increase_part - self.d_weight * min_pw_dist 
+
+        return total_score
+
 
 
 
@@ -157,7 +227,101 @@ def get_model_gaussian_scaled_means(model: BaseCoreReadout, session: str) -> tor
     session_readout = model.readout[session]
     return session_readout.mask_mean * session_readout.gaussian_mean_scale
 
-#@time_it
+
+
+def generate_deis(model: BaseCoreReadout | EnsembleModel,
+                  mei: torch.Tensor, 
+                  n_deis: int,
+                  neuron_id: int,
+                  session_id: str,
+                  opt_stim_generation_params: Dict[str,Any]) -> torch.Tensor:
+    """
+    Generates deis
+    """
+    norm = opt_stim_generation_params["stimulus_range_constraints"]["norm"]
+    
+    detached_stimulus = mei.detach().clone()
+    if detached_stimulus.ndim == 5:
+        detached_stimulus = detached_stimulus.squeeze(0) # shape (C.T,H,W)
+    c,t,h,w = detached_stimulus.shape
+    # get rf mask: first spatial H,W then temporal then combine
+    rf_mask_space = torch.any(torch.abs(detached_stimulus - torch.mean(detached_stimulus)) > 1.5 * torch.std(detached_stimulus), dim=(0,1)) # shape (H,W)
+    rf_mask_time = torch.any(torch.abs(detached_stimulus - torch.mean(detached_stimulus)) > 1.5 * torch.std(detached_stimulus), dim=(0,2,3)) # shape (T,)
+    rf_mask_thw = rf_mask_time[:,None,None] * rf_mask_space[None,:,:] # shape (T,H,W)
+    rf_mask = rf_mask_thw[None].repeat(c, 1, 1, 1).unsqueeze(0) # shape (1,C,T,H,W)
+    rf_mask = rf_mask.to(DEVICE)
+
+    # apply mask to stimulus    
+    detached_stimulus = detached_stimulus * rf_mask.squeeze(0)
+
+    # 1) init deis
+    deis = detached_stimulus.repeat(n_deis, 1, 1, 1, 1)
+    noise = torch.randn_like(deis) * 0.1
+    deis = deis + noise
+    
+    # apply mask and normalize
+    for i in range(deis.shape[0]):
+        d = deis[i] * rf_mask  # rf_mask: (C,T,H,W) or (1,C,T,H,W) with broadcasting
+        n = torch.norm(d)
+        if n > 0:
+            d = d / n * norm
+        deis[i] = d
+
+    deis.requires_grad_(True)
+
+    # 2) generate optimization components
+    stimulus_postprocessor_list, response_reducer,stimulus_regularizing_loss = generate_optimization_components(
+        stimulus_range_constraints=opt_stim_generation_params["stimulus_range_constraints"],
+        reducer_axis=1,
+        reducer_start=opt_stim_generation_params["reducer_start"],
+        reducer_length=opt_stim_generation_params["reducer_length"],
+        temporal_gaussian_kwargs=opt_stim_generation_params["temporal_gaussian_kwargs"],
+        spatial_gaussian_kwargs=opt_stim_generation_params["spatial_gaussian_kwargs"],
+        range_regularization_kwargs=opt_stim_generation_params["range_regularization_kwargs"],
+    )
+    
+    # check if model params are on same device as stimulus
+    if next(model.parameters()).device != DEVICE:
+        model = model.to(DEVICE)
+
+    # scale and clip data once
+    clipper = [processor for processor in stimulus_postprocessor_list if isinstance(processor, ChangeNormJointlyClipRangeSeparately)][0]
+    for i in range(deis.shape[0]):
+        deis[i].unsqueeze(0).data = clipper.process(deis[i].unsqueeze(0).data)
+    
+    # get model response to mei 
+    response_mei = get_model_mei_response(model, detached_stimulus, session_id, [neuron_id])
+    single_neuron_response = response_mei[...,0]
+    # get mean ofer response reducer time
+    mean_single_neuron_mei_response = single_neuron_response[
+        opt_stim_generation_params["reducer_start"] : opt_stim_generation_params["reducer_start"] + opt_stim_generation_params["reducer_length"]
+    ].mean()
+
+    objective = DiverselyIncreaseObjective(
+        model, 
+        neuron_indices=neuron_id, 
+        data_key=session_id, 
+        response_reducer=response_reducer,
+        d_weight = 1,
+        frac_max_response = opt_stim_generation_params.get("frac_max_response",0.8),
+        response_mei = mean_single_neuron_mei_response,
+        rf_mask =rf_mask.detach()
+    )
+    optimization_stopper = OptimizationStopper(max_iterations=opt_stim_generation_params["max_iteration"])
+    optimizer_init_fn = partial(torch.optim.SGD, lr=opt_stim_generation_params["lr"])
+
+    optimize_stimulus(
+    deis,
+    optimizer_init_fn,
+    objective,
+    optimization_stopper,
+    stimulus_postprocessor=stimulus_postprocessor_list,
+    stimulus_regularization_loss=stimulus_regularizing_loss,
+    )
+    
+    return deis.detach()
+    
+
 def generate_opt_stim(model: BaseCoreReadout | EnsembleModel,
                       new_session_id:str,
                       stimulus_postprocessor_list: List[Any],

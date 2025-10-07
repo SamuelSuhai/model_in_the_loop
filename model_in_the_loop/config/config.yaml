@@ -12,8 +12,8 @@ defaults:
 
 model_configs:
   # only train readout must be false if is_ensemble_model is true
-  only_train_readout: false # whether or not to freeze core parameters and only train readout (eg. when finetuning model to new data)
-  is_ensemble_model: false
+  only_train_readout: true # whether or not to freeze core parameters and only train readout (eg. when finetuning model to new data)
+  is_ensemble_model: true
   responses_path_local: ${oc.env:OPENRETINA_CACHE_DIRECTORY}/euler_lab/hoefling_2024/responses/rgc_natstim_2024-08-14.h5
 
   # overwrite load_model_path

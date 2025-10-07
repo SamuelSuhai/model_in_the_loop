@@ -48,8 +48,8 @@ def validate_input(only_consider_these_rois: List[int],
 
 def build_common_df(only_consider_these_rois: List[int],
                     mei_data_container: pd.DataFrame,
-                    neuron_data_dict: Dict[int,ResponsesTrainTestSplit],
-                    new_session_id: int,
+                    neuron_data_dict: Dict[str,ResponsesTrainTestSplit],
+                    new_session_id: str,
                     readout_idx_wmei2rois: Dict[int, int],):
 
     """
@@ -167,8 +167,8 @@ def find_mei_id_oder_for_one_readout_idx(roi_id: int,
     return selected_mei_ids, info
 
 def select_subset_of_meis_for_each_roi( only_consider_these_rois: List[int],
-                                        neuron_data_dict: Dict[int,ResponsesTrainTestSplit],
-                                        new_session_id: int,
+                                        neuron_data_dict: Dict[str,ResponsesTrainTestSplit],
+                                        new_session_id: str,
                                         mei_data_container: pd.DataFrame,
                                         readout_idx_wmei2rois: Dict[int, int],
                                         n_stimuli_total = 6,
