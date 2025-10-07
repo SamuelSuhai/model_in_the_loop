@@ -141,16 +141,12 @@ def find_mei_id_oder_for_one_readout_idx(roi_id: int,
     if len(sorted_mei_ids) < n_remaining:
         raise ValueError(f"Only {len(sorted_mei_ids)} MEIs available for ROI {roi_id}, but need {n_remaining} more")
 
-    # Always include strongest
-    selected_mei_ids.append(sorted_mei_ids[0])
-    
-    # Pick evenly spaced MEIs from remaining (excluding strongest and weakest)
-    middle_indices = np.linspace(1, len(sorted_mei_ids)-2, n_remaining-2, dtype=int)
-    for idx in middle_indices:
+
+    # Pick evenly spaced MEIs from remaining, includes strongest and weakest
+    indices = np.linspace(0, len(sorted_mei_ids)-1, n_remaining, dtype=int)
+    for idx in indices:
         selected_mei_ids.append(sorted_mei_ids[idx])
-    
-    # Always include weakest
-    selected_mei_ids.append(sorted_mei_ids[-1])
+  
 
     # Gather metadata for selected MEIs
     for mei_id in selected_mei_ids:

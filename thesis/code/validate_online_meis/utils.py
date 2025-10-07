@@ -326,13 +326,11 @@ def plot_responses_and_mei_info_one_roi(
     labels = []
     for i, mei_id in enumerate(mei_ids):
         # Check if this is the ROI's own MEI
-        if f"roi_{roi_id}" in mei_id:
-            labels.append(f"{mei_id}\n(own)")
-        # Check if it's the same cell type
-        elif celltypes[i] == celltypes[0]:  # Compare to this ROI's cell type
-            labels.append(f"{mei_id}\n(same type)")
+        if f"roi_{roi_id}_" in mei_id:
+            labels.append(f"{mei_id}\n(own, G{str(celltypes[i])})")
+            # Show type
         else:
-            labels.append(mei_id)
+            labels.append(mei_id + "\n(G" + str(celltypes[i]) + ")")
     
     ax.set_xticklabels(labels, rotation=45, ha='right')
     
