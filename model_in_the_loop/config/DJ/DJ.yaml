@@ -10,7 +10,7 @@ userinfo:
   data_dir: ${paths.repo_directory}model_in_the_loop/data/data_dj_format
 
 table_parameters:
-  # for the DJ tables 
+  # for the DJ tables
   PreprocessParams: [
       {preprocess_id: 1, fs_resample: 60, stim_names: ["gChirp", "lChirp", "movingbar", "densenoise"]},
       {preprocess_id: 2, window_length: 60, poly_order: 3, non_negative: 1, subtract_baseline: 0, standardize: 1, stim_names: ["mouse_cam"]}

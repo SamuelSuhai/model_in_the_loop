@@ -244,14 +244,11 @@ class DJTableHolder:
 
     def add_all_stimuli(self) -> None:
 
-
-        
         import h5py
 
         with h5py.File("/gpfs01/euler/data/Resources/Stimulus/noise.h5", "r") as f:
             noise_stimulus = f['stimulusarray'][:].T.astype(int)
         noise_stimulus = noise_stimulus*2-1
-        
         
         self('Stimulus')().add_nostim(skip_duplicates=True)
         self('Stimulus')().add_chirp(spatialextent=1000, stim_name='gChirp', alias="chirp_gchirp_globalchirp", skip_duplicates=True)
@@ -259,6 +256,7 @@ class DJTableHolder:
 
         
         self('Stimulus')().add_noise(**self.table_parameters.Stimulus.noise, stim_trace=noise_stimulus,)
+
             
         self('Stimulus')().add_movingbar(skip_duplicates=True)
         

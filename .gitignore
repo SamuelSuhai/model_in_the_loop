@@ -1,7 +1,9 @@
 .vscode
+data/*
 thesis/data/recordings
 thesis/data/online_quality_and_celltype/*
 thesis/data/validate_online_meis/*
+thesis/data/online_deis/*
 model_in_the_loop/outputs/*
 model_in_the_loop/quick_testing
 model_in_the_loop/data/online_computed_data/*
