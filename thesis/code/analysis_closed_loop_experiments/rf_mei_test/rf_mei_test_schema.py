@@ -1,6 +1,6 @@
 import re
 import numpy as np
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple,List
 
 ########################## Basics for RGC type classification ##########################
 from abc import abstractmethod
@@ -64,3 +64,32 @@ class RetinalRoiLocation(RetinalRoiLocationTemplate):
     expinfo_table = Experiment.ExpInfo
 
 
+from .rf_mei_test_tables import (CirclePresentationLocationTemplate,
+                                 SingleCircleSnippetTemplate,
+                                 Offline2OnlineRoiIdTemplate,
+                                 OnlineInferredRFPositionTemplate,
+                                 )
+
+
+
+
+@schema
+class CirclePresentationLocation(CirclePresentationLocationTemplate):
+    presentation_table = Presentation
+
+
+@schema
+class SingleCircleSnippet(SingleCircleSnippetTemplate):
+    snippets_table = Snippets
+    circle_presentation_location_table = CirclePresentationLocation
+
+
+@schema 
+class Offline2OnlineRoiId(Offline2OnlineRoiIdTemplate):
+    roi_table = Roi 
+
+
+@schema
+class OnlineInferredRFPosition(OnlineInferredRFPositionTemplate):
+    circle_presentation_location_table = CirclePresentationLocation
+    offline2online_roi_id_table = Offline2OnlineRoiId

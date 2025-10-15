@@ -258,9 +258,11 @@ def get_roi_query_expression(roi_ids: List[int],) -> str:
 
 def transform_to_qdspy_coord(stimulus_table,
                              all_x_pix: List[float], 
-                             all_y_pix: List[float]) -> Tuple[List[float],List[float]]:
+                             all_y_pix: List[float],
+                             verbose=False) -> Tuple[List[float],List[float]]:
     """
     transforms indices of dense noise to QDSpy coordinates in microns.
+    NOTE IMPORTANT:
     x_pix values are AXIS 0 in DENSE NOISE 
     y_pix values are AXIS 1 in DENSE NOISE
     """
@@ -272,7 +274,8 @@ def transform_to_qdspy_coord(stimulus_table,
     # Get pixel size and offset
     pixel_size_x_um = stim_dict['pix_scale_x_um']
     pixel_size_y_um = stim_dict['pix_scale_y_um']
-    print(f"PIXEL SIZE: x {pixel_size_x_um} um, y {pixel_size_y_um} um.")
+    if verbose:
+        print(f"PIXEL SIZE: x {pixel_size_x_um} um, y {pixel_size_y_um} um.")
 
     # What about offset? in stim dict?
     offset_x_um = stim_dict['offset_x_um']

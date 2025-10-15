@@ -4,6 +4,8 @@
 # ---------------------------------------------------------------------
 import QDS
 import os
+import numpy as np
+
 from model_in_the_loop.utils.QDSpy_helpers import get_latest_remote_stimulus_subdir, read_metadata,copy_stim_dir_to_local
 
 
@@ -122,7 +124,10 @@ def execute (metadata: dict,) -> None:
             # calculate remaining time
             remaining_trial_time = dInterval_s - dMark_s
             remaining_bg_time = remaining_trial_time / 2
+            remaining_bg_time = np.round (remaining_bg_time / p["durFr_s"]) * p["durFr_s"] # round to nearest frame duration
+
             remaining_time_elypse = remaining_trial_time - remaining_bg_time
+            remaining_time_elypse = np.round (remaining_time_elypse / p["durFr_s"]) * p["durFr_s"] # round to nearest frame duration
             
             # draw bg no marker
             QDS.Scene_Clear(remaining_bg_time, 0)

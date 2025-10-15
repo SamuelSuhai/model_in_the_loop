@@ -1,8 +1,15 @@
 import os
+from collections.abc import Iterable
+from numbers import Integral
 from thesis.code.analysis_closed_loop_experiments.rf_mei_test.rf_mei_test_schema import *
+from thesis.code.analysis_closed_loop_experiments.rf_mei_test.rf_mei_test_tables import CIRCLE_TYPES
 import datajoint as dj
 from omegaconf import DictConfig, ListConfig
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
+from djimaging.utils.plot_utils import plot_trace_and_trigger
 
 from warnings import simplefilter
 simplefilter(action='ignore', category=FutureWarning)
@@ -69,12 +76,15 @@ def populate_experiment_field_presentation(clear=False,safemode=True) -> None:
     RelativeFieldLocation().populate(processes=MULTIPROCESSING_THREADS, display_progress=True)
     Presentation().populate(processes=MULTIPROCESSING_THREADS, display_progress=True)
 
-def add_rois_and_traces(clear=False) -> None:
+def add_rois_and_traces(clear=False,scan_for_existing = True) -> None:
     if clear:
         Roi().delete()
         Traces().delete()
         PreprocessTraces().delete()
         return
+    if scan_for_existing:
+        RoiMask().rescan_filesystem(verboselvl=3)
+        
     
     Roi().populate(processes=MULTIPROCESSING_THREADS, display_progress=True)
     Traces().populate(processes=MULTIPROCESSING_THREADS, display_progress=True)
@@ -105,9 +115,10 @@ def add_params(table_parameters, recordings = "FloDeja",clear=False) -> None:
             ))
     preprocess_params =table_parameters.get("PreprocessParams", {})
     
-    # add preprocess params for own stimuli 
-    preprocess_params[0]["stim_names"].extend(['circle','optstim'])
-
+    # add preprocess params for own stimuli
+    preprocess_params[0]["stim_names"].extend(['circle'])
+    preprocess_params[1]["stim_names"].extend(['optstim'])
+    
     
 
 
@@ -141,6 +152,22 @@ def add_params(table_parameters, recordings = "FloDeja",clear=False) -> None:
     # spike estimation
     CascadeTraceParams().add_default(stim_names=['mouse_cam'])
     CascadeParams().add_default(model_name = 'Global_EXC_7.8125Hz_smoothing200ms_causalkernel')
+
+
+
+def populate_DN(clear =False,safemode=True,processes=MULTIPROCESSING_THREADS, display_progress=True) -> None:
+    if clear:
+        DNoiseTrace().delete(safemode=safemode)
+        STA().delete(safemode=safemode)
+        SplitRF().delete(safemode=safemode)
+        FitGauss2DRF().delete(safemode=safemode)
+        return
+    
+    DNoiseTrace().populate(processes=processes, display_progress=display_progress)
+    STA().populate(processes=processes, display_progress=display_progress)
+    SplitRF().populate(processes=processes, display_progress=display_progress)
+    FitGauss2DRF().populate(processes=processes, display_progress=display_progress)
+
 
 
 def add_all_stimuli(table_parameters) -> None:
@@ -190,8 +217,8 @@ def add_own_stimuli(clear = False) -> None:
                             skip_duplicates=True)
     Stimulus().add_stimulus(stim_name='optstim', 
                             alias="mei_mei1_mei2_mei3_mei4_mei5", 
-                            isrepeated=False, 
-                            ntrigger_rep=0,
+                            isrepeated=True, 
+                            ntrigger_rep=1,
                             trial_info=None,
                             skip_duplicates=True)
         
@@ -210,6 +237,14 @@ def load_dj_config(config_file: str,schema_name: str) -> None:
     dj.conn()
 
 
+def get_field_keys_with_stim(stim_name):
+    if isinstance(stim_name,str):
+        stim_query = f"stim_name = '{stim_name}'"
+    all_stim_fields = (Field().proj() & (Presentation().proj() & stim_query)).fetch(as_dict=True)
+    return all_stim_fields
+
+
+
 def prepclassifier_and_activate(output_folder):
     
     
@@ -221,3 +256,452 @@ def prepclassifier_and_activate(output_folder):
     activate_schema(schema=schema, create_schema=True, create_tables=True)
 
     
+
+
+def plot_roi_pp_trace_for_stim(roi_id,stim_name,field_key,cond2_restriction = {}):
+    (PreprocessTraces() & field_key & dict(roi_id=roi_id) & dict(stim_name=stim_name) & cond2_restriction).plot1()
+    fig = plt.gcf()
+    return fig
+
+def plot_all_rois_pp_trace_for_stim(
+                                    stim_name,
+                                    field_key,
+                                    cond2_restriction = {},
+                                    pp_trace_tab = PreprocessTraces,
+                                    circle_pres_loc_tab = CirclePresentationLocation,
+                                    offline2online_roi_id_tab = Offline2OnlineRoiId):
+    restricted_pp_traces = (pp_trace_tab() & offline2online_roi_id_tab() & circle_pres_loc_tab() & field_key & dict(stim_name=stim_name) & cond2_restriction)
+    all_rois = restricted_pp_traces.fetch("roi_id")
+    for roi in all_rois:
+        plot_roi_pp_trace_for_stim(roi,stim_name,field_key,cond2_restriction)
+    
+
+
+
+def populate_snippets(clear=False,processes=MULTIPROCESSING_THREADS, display_progress=True):
+    if clear:
+        Snippets().delete()
+        return
+    
+    Snippets().populate(processes=processes, display_progress=display_progress)
+
+
+def populate_circle_presentation_and_snippets(clear = False):
+    if clear:
+        CirclePresentationLocation().delete()
+        SingleCircleSnippet().delete()
+        return
+    
+    CirclePresentationLocation().upload()
+    SingleCircleSnippet().populate(processes=MULTIPROCESSING_THREADS, display_progress=True)
+
+
+def load_rf_mask_saved_in_dict(rf_mask_file):
+    import pickle
+    with open(rf_mask_file, 'rb') as f:
+        rf_mask_dict = pickle.load(f)
+    return rf_mask_dict
+
+def highlight_roi_in_mask(roi_mask,roi_id,ax = None,alpha=0.5):
+    if ax is None:
+        fig, ax = plt.subplots()
+    other_rois = (roi_mask !=roi_id) & (roi_mask != 1)
+    mask = (roi_mask==-roi_id).astype(float) * 100.0 + (other_rois).astype(float) * 50
+    
+    ax.imshow(np.rot90(mask,k=1),cmap='Reds',alpha=alpha)
+    return ax
+
+
+
+def fetch_trace_trigger_triggerinfo(preprocess_traces_table,
+                                    presentation_table,
+                                    circle_presentation_location_table,
+                                    online2offline_roi_id_table,
+                                    field_roi_cond2_key: Dict[str,Any]):
+
+    # join tables 
+    full_query = (preprocess_traces_table * presentation_table * circle_presentation_location_table * online2offline_roi_id_table) & field_roi_cond2_key
+    assert len(full_query) == 1, f"Expected one entry for {field_roi_cond2_key}, got {len(full_query)}"
+
+    pp_trace_t0, pp_trace_dt, pp_trace, _ = full_query.fetch1(
+        "pp_trace_t0", "pp_trace_dt", "pp_trace", "smoothed_trace")
+    triggertimes = full_query.fetch1("triggertimes")
+
+    pp_trace_times = np.arange(pp_trace.size) * pp_trace_dt + pp_trace_t0
+
+    triggeridx2positions = full_query.fetch1("triggeridx2positions")
+    triggeridx2online_roi_id = full_query.fetch1("triggeridx2online_roi_id")
+    triggeridx2circle_type = full_query.fetch1("triggeridx2circle_type")
+    true_online_roi_id = full_query.fetch1("true_online_roi_id")
+    return pp_trace_times,pp_trace,triggertimes,(triggeridx2positions,triggeridx2online_roi_id,triggeridx2circle_type),true_online_roi_id
+
+
+def get_field_roi_cond2_key(offline2online_roi_id_table,field_key,roi_id,con2_value = "control"):
+    key = (offline2online_roi_id_table & field_key & dict(roi_id=roi_id)).fetch1().copy()
+    key["cond2"] = con2_value
+    return key
+
+def plot_trace_trigger_triggerinfo(trace_times,trace,triggertimes,triggeridx2hilightalpha: List[float],ax,triggeridx2txt= None,):
+    """
+    plots traces and triggers. Highlighted by triggeridx2hilightalpha (). 
+    if triggeridx2txt is given, it will also add text to the highlighted triggers.
+    """
+
+    plot_trace_and_trigger(
+        trace_times,
+        trace,
+        triggertimes,
+        ax = ax
+    )
+    # add highlights
+    if triggeridx2hilightalpha is not None:
+        for triggeridx, alpha in enumerate(triggeridx2hilightalpha):
+            if alpha > 0 and triggeridx < len(triggertimes)-1:
+                ax.axvspan(triggertimes[triggeridx], triggertimes[triggeridx +1], color='yellow', alpha=alpha)
+            if triggeridx2txt is not None:
+                ax.text(triggertimes[triggeridx], np.max(trace), triggeridx2txt[triggeridx], color='blue', fontsize=4,clip_on=True)
+
+    return ax
+
+def get_trigger2rf_center_dist(triggeridx2positions,roi_position):
+    triggeridx2rf_center_dist = np.linalg.norm(np.array([triggeridx2positions]).squeeze() - roi_position,axis = 1)
+    return triggeridx2rf_center_dist
+
+def get_roi_position(triggeridx2positions,triggeridx2online_roi_id,true_online_roi_id):
+    idx = np.where(np.array(triggeridx2online_roi_id) == true_online_roi_id)[0][0]
+    roi_position = triggeridx2positions[idx]
+    return roi_position
+    
+
+
+
+
+
+
+
+def fetch_and_plot_trace_trigger_triggerinfo_for_all_rois(preprocess_traces_table,
+                                                          presentation_table,
+                                                          circle_presentation_location_table,
+                                                          offline2online_roi_id_table,
+                                                          field_key,
+                                                          cond2_restriction = {},
+                                                          ax = None,
+                                                          circle_type = None):
+    pass
+
+
+def fetch_and_plot_trace_trigger_triggerinfo(preprocess_traces_table,
+                                             presentation_table,
+                                             circle_presentation_location_table,
+                                             offline2online_roi_id_table, 
+                                             key,
+                                             ax = None,
+                                             circle_type = None):
+
+
+
+    pp_trace_times,pp_trace,triggertimes,\
+        (triggeridx2positions,triggeridx2online_roi_id,triggeridx2circle_type),\
+            true_online_roi_id = fetch_trace_trigger_triggerinfo(preprocess_traces_table,
+                                                            presentation_table,
+                                                            circle_presentation_location_table,
+                                                            offline2online_roi_id_table,
+                                                            key)
+    
+    # get the roi_positoi
+    roi_position = get_roi_position(triggeridx2positions,triggeridx2online_roi_id,true_online_roi_id)
+    
+    triggeridx2rf_center_dist = get_trigger2rf_center_dist(triggeridx2positions,roi_position)
+    triggeridx2hilightalpha =  triggeridx2rf_center_dist / np.max(triggeridx2rf_center_dist)
+    triggeridx2txt = [str(pos) +"\ndist:" + str(int(dist)) for pos,dist in zip(triggeridx2positions,triggeridx2rf_center_dist)]
+    
+    
+    
+    if ax is None:
+        fig, ax = plt.subplots(figsize =(10, 5))
+    
+    # restrict to elypse type
+    if circle_type is not None:
+        assert circle_type in CIRCLE_TYPES, f"circle_type {circle_type} not in {CIRCLE_TYPES}"
+        elypse_triggeridx = [i for i, t in enumerate(triggeridx2circle_type) if t == circle_type]
+        first_trigger = triggertimes[elypse_triggeridx[0]]
+        last_trigger = triggertimes[elypse_triggeridx[-1]]
+        ax.set_xlim(first_trigger - 1, last_trigger + 2)
+
+        # filter
+    
+    ax = plot_trace_trigger_triggerinfo(pp_trace_times,pp_trace,triggertimes,triggeridx2hilightalpha,ax,triggeridx2txt)
+    
+    # set legend lower right
+    ax.legend(loc='lower right')
+
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel("Fluorescence [a.u.]")
+    ax.set_title(f"Roi Id {key['roi_id']} circle type {circle_type}")
+    
+
+    
+    return ax
+
+
+def wrapper_fetch_and_plot_trace_trigger_triggerinfo_all_rois(
+        offine2online_roi_id_table,
+        pp_trace_table,
+        presentation_table,
+        circle_pres_loc_table,
+        field_cond2_key,
+):
+    offline_roi_ids = (offine2online_roi_id_table() & field_cond2_key).fetch("roi_id")
+    nrow = len(offline_roi_ids)
+    ncol = 4
+    fig,ax = plt.subplots(nrow,ncol,figsize=(25,5*nrow),)
+ 
+    for i,roi_id in enumerate(offline_roi_ids,):
+        field_roi_cond2_key = {** field_cond2_key,"roi_id": roi_id}
+        for i_circle, circle_type in enumerate(CIRCLE_TYPES):
+            fetch_and_plot_trace_trigger_triggerinfo(
+                preprocess_traces_table = pp_trace_table(),
+                presentation_table = presentation_table(),
+                circle_presentation_location_table  = circle_pres_loc_table(),
+                offline2online_roi_id_table = offine2online_roi_id_table(), 
+                key = field_roi_cond2_key,
+                circle_type=circle_type,
+                ax = ax[i,i_circle],
+            )
+
+
+def fetch_rois_circle_snippets_df(field_key,roi_id,cond2 =None):
+    if isinstance(roi_id,Iterable) and not isinstance(roi_id,str,bytes):
+        query_str_roi = f"roi_id in {tuple(roi_id)}"
+    else: 
+        query_str_roi = f"roi_id='{roi_id}'" 
+
+    if cond2 is not None:
+        assert isinstance(cond2,(str,int)), f"Expected cond2 to be str, int got {type(cond2)}"
+        query_str_roi = query_str_roi + f" AND cond2 = '{cond2}'"
+    
+    # query fo
+    query = (SingleCircleSnippet() * Offline2OnlineRoiId() * CirclePresentationLocation() * OnlineInferredRFPosition())
+
+    single_roi_df = pd.DataFrame((query & field_key & query_str_roi).fetch(as_dict=True))
+    single_roi_df = single_roi_df[["roi_id",
+                                   "true_online_roi_id",
+                                   "circle_type",
+                                   "single_snippet",
+                                   "x_pos","y_pos",
+                                   "single_snippet_t0",
+                                   "online_roi_id",
+                                   "x_rf","y_rf",
+                                   "is_first_pres_of_circle_type",
+                                   "cond2"]]
+
+    return single_roi_df
+    
+
+
+def add_distance_to_snippet_df(snippet_df):
+
+    def _calc_pres_dist_from_rf_position(x_rf,y_rf,
+                                         x_pos,y_pos):
+        return np.linalg.norm(np.array([x_rf,y_rf]) - np.array( [x_pos,y_pos]))
+
+    snippet_df["distance"] = snippet_df.apply(lambda row: _calc_pres_dist_from_rf_position(row["x_rf"],row["y_rf"], row["x_pos"],row["y_pos"]),axis = 1)
+    return snippet_df
+
+def drop_first_presentation_of_circle_type(single_snippet_df,verbose=True):
+    """
+    Drops is_first_pres_of_circle_type == 1 rows.
+    """
+    to_remove = single_snippet_df["is_first_pres_of_circle_type"] == 1
+    if verbose:
+        print(f"Dropping {to_remove.sum()} rows with is_first_pres_of_circle_type == 1")
+
+    single_snippet_df = single_snippet_df[single_snippet_df["is_first_pres_of_circle_type"] == 0]
+    return single_snippet_df
+
+def add_bsl_corrected_snippets(single_snippet_df,method= "first"):
+    _STIM_DUR_FR = 120
+
+    if method == "first":
+        func = lambda x: x - x[0]
+    elif method == "min":
+        func = lambda x: x - np.min(x[:_STIM_DUR_FR//2])
+    elif method == "median":
+        func = lambda x: x - np.median(x[:_STIM_DUR_FR//2])
+    else:
+        raise ValueError
+
+    single_snippet_df[f"single_snippet_bsl_corrected_{method}"] = single_snippet_df["single_snippet"].apply(func)
+    return single_snippet_df
+
+
+
+def get_mean_snippet_df(field_key,
+                        roi_id,
+                        bsl_correction_method = "first",
+                        cond2_value=None):
+    single_roi_df = fetch_rois_circle_snippets_df(field_key,roi_id=roi_id,cond2=cond2_value)
+    single_roi_df = add_bsl_corrected_snippets(single_roi_df,method=bsl_correction_method)
+    snippet_col_name = f"single_snippet_bsl_corrected_{bsl_correction_method}"
+    single_roi_df = add_distance_to_snippet_df(single_roi_df)
+    single_roi_df = drop_first_presentation_of_circle_type(single_roi_df)
+
+    single_roi_df = single_roi_df[[c for c in single_roi_df.columns if "single_snippet" in c or c in ["roi_id",
+                                    "circle_type",
+                                    "online_roi_id",
+                                    "distance",
+                                    "cond2"]]]
+
+
+
+    gb_cols = list(filter(lambda c: not (c == "cond2" or "single_snippet" in c), single_roi_df.columns))
+    grouped_df = single_roi_df.groupby(gb_cols,as_index=False)
+    agg_func = lambda x: np.mean(np.stack(x.to_list()),axis=0)
+    average_df = grouped_df[snippet_col_name].agg(
+        func = agg_func
+    )
+    sorted_avg_df = average_df.sort_values("distance",ascending=True)
+
+    return sorted_avg_df, snippet_col_name
+
+
+
+def plot_ordered_snippets(snippet_trace_list,
+                            single_snippet_dt,
+                            snippet_presentation_distances,
+                            time_buffer_between_snippets = 0,
+                            ax =None,
+                            plot_kwargs = {},
+                            vline_kwargs = {},
+                            stim_onset_patch_kwargs = {},
+                            show_legend=False):
+    if ax is None:
+        fig, ax = plt.subplots()
+    single_snippet_time_vec = np.arange(len(snippet_trace_list[0])) * single_snippet_dt
+    t0 = 0
+    x_tick_vals = []
+    for i, snippet in enumerate(snippet_trace_list):
+        time_axis = single_snippet_time_vec + t0
+
+        ax.plot(time_axis, snippet,color = plot_kwargs.get("color","blue"))
+        
+        # add vline at start 
+        ax.axvline(t0, 
+                   color=vline_kwargs.get("color","red"),
+                    linestyle=vline_kwargs.get("linestyle",'--'),
+                    )
+        # add x tick at center of snippet
+        x_tick_vals.append(t0 + single_snippet_time_vec[len(single_snippet_time_vec)//2])
+
+        # add patch from half snippet to end
+        stim_onset_patch_start = t0 + single_snippet_time_vec[len(single_snippet_time_vec)//2]
+        stim_onset_patch_end = t0 + single_snippet_time_vec[-1]
+        ax.axvspan(stim_onset_patch_start, stim_onset_patch_end,
+                    color=stim_onset_patch_kwargs.get("color","yellow"), 
+                    alpha=stim_onset_patch_kwargs.get("alpha",0.3),
+                    )
+
+        t0 = time_axis[-1] + time_buffer_between_snippets
+
+    for spine_name in ["top", "right"]:
+        ax.spines[spine_name].set_visible(False)
+
+    # add x ticks with distance labels
+    ax.set_xticks(x_tick_vals)
+    ax.set_xticklabels(list(map(lambda dist: f"{dist:.0f}",snippet_presentation_distances)))    
+
+    ax.set_xlabel('Distance [um]')
+    ax.set_ylabel('Fluorescence [a.u.]')
+    
+    if show_legend:
+        axvline_label=vline_kwargs.get("label","snippet start")
+        axvspan_label=stim_onset_patch_kwargs.get("label","stimulus presentation")
+
+        # add proxy artists
+        from matplotlib.lines import Line2D
+        from matplotlib.patches import Patch
+        proxy_lines = [Line2D([0], [0], color=vline_kwargs.get("color","red"), linestyle=vline_kwargs.get("linestyle",'--'), label=axvline_label),
+                       Patch(facecolor=stim_onset_patch_kwargs.get("color","yellow"), alpha=stim_onset_patch_kwargs.get("alpha",0.3), label=axvspan_label)]
+        ax.legend(handles=proxy_lines, loc='upper right')
+
+
+def get_str_from_field_key(field_key,only_these=["exp_num","field"]):
+    return "_".join([f"{k}-{v}" for k,v in field_key.items() if k in only_these])
+
+
+def get_snippet_trace_data(df,snippet_col_name,stim_name):
+    stim_df = df[df["circle_type"] == stim_name]
+    snippet_trace_list = stim_df[snippet_col_name].to_list()
+    single_snippet_dt = 1/60
+    snippet_presentation_distances = stim_df["distance"].to_list()
+    return snippet_trace_list,single_snippet_dt, snippet_presentation_distances
+
+
+
+def wrapper_plot_one_roi_ordered_snippets(
+        field_key,
+        roi_id,
+        bsl_correction_method = "first",
+        stim_name = "off_big",
+        plot_kwargs = {},
+        vline_kwargs = {},
+        time_buffer_between_snippets = 0,
+        show_legend=False,
+        ax = None,
+        cond2_value = None,
+    ):
+
+
+    # fetch and process df
+    mean_df,snippet_col_name = get_mean_snippet_df(field_key,roi_id,bsl_correction_method=bsl_correction_method,cond2_value=cond2_value)
+
+
+    snippet_trace_list,single_snippet_dt ,\
+        snippet_presentation_distances= get_snippet_trace_data(mean_df,
+                                                                snippet_col_name,
+                                                                stim_name=stim_name)
+                
+    plot_ordered_snippets(snippet_trace_list,
+                          single_snippet_dt,
+                          snippet_presentation_distances,
+                          time_buffer_between_snippets = time_buffer_between_snippets,
+                          plot_kwargs = plot_kwargs,vline_kwargs= vline_kwargs,show_legend =show_legend,ax = ax)
+    
+
+
+def wrapper_plot_rois_list_ordered_snippets(
+        field_key,
+        roi_id_list,
+        bsl_correction_method = "first",
+        stim_name = "off_big",
+        plot_kwargs = {},
+        vline_kwargs = {},
+        time_buffer_between_snippets = 0,
+        ax = None,
+        cond2_value = None,
+    ):
+
+
+    # fetch and process df
+    # plot each roi
+    n_col = np.sqrt(len(roi_id_list)).astype(int)
+    n_row = (np.ceil(len(roi_id_list)/n_col)).astype(int)
+    if ax is None:
+        fig, ax = plt.subplots(n_row,n_col,figsize=(n_col*5,n_row*5))
+        ax = ax.flatten()
+    else:
+        assert len(ax) >= len(roi_id_list), f"Expected ax to have at least {len(roi_id_list)} subplots, got {len(ax)}"
+    for i,roi_id in enumerate(roi_id_list):
+        print(f"Plotting roi {roi_id} ({i+1}/{len(roi_id_list)})")
+        wrapper_plot_one_roi_ordered_snippets(
+            field_key=field_key,
+            roi_id=roi_id,
+            bsl_correction_method=bsl_correction_method,
+            stim_name=stim_name,
+            plot_kwargs = plot_kwargs,
+            vline_kwargs = vline_kwargs,
+            time_buffer_between_snippets = time_buffer_between_snippets,
+            ax = ax[i],
+            cond2_value = cond2_value,
+        )
+        ax[i].set_title(f"Roi {roi_id}")
