@@ -64,8 +64,8 @@ class RetinalRoiLocation(RetinalRoiLocationTemplate):
     expinfo_table = Experiment.ExpInfo
 
 
-from .rf_mei_test_tables import (CirclePresentationLocationTemplate,
-                                 SingleCircleSnippetTemplate,
+from .rf_mei_test_tables import (StimulusPresentationInfoTemplate,
+                                 SingleSnippetTemplate,
                                  Offline2OnlineRoiIdTemplate,
                                  OnlineInferredRFPositionTemplate,
                                  )
@@ -74,14 +74,14 @@ from .rf_mei_test_tables import (CirclePresentationLocationTemplate,
 
 
 @schema
-class CirclePresentationLocation(CirclePresentationLocationTemplate):
+class StimulusPresentationInfo(StimulusPresentationInfoTemplate):
     presentation_table = Presentation
 
 
 @schema
-class SingleCircleSnippet(SingleCircleSnippetTemplate):
+class SingleSnippet(SingleSnippetTemplate):
     snippets_table = Snippets
-    circle_presentation_location_table = CirclePresentationLocation
+    stimulus_presentation_info_table = StimulusPresentationInfo
 
 
 @schema 
@@ -91,5 +91,5 @@ class Offline2OnlineRoiId(Offline2OnlineRoiIdTemplate):
 
 @schema
 class OnlineInferredRFPosition(OnlineInferredRFPositionTemplate):
-    circle_presentation_location_table = CirclePresentationLocation
+    stimulus_presentation_info_table = StimulusPresentationInfo
     offline2online_roi_id_table = Offline2OnlineRoiId
