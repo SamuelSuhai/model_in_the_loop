@@ -578,7 +578,6 @@ def plot_ordered_snippets(snippet_trace_list,
                             time_buffer_between_snippets = 0,
                             ax =None,
                             plot_kwargs = {},
-                            vline_kwargs = {},
                             stim_onset_patch_kwargs = {},
                             show_legend=False):
     if ax is None:
@@ -591,11 +590,7 @@ def plot_ordered_snippets(snippet_trace_list,
 
         ax.plot(time_axis, snippet,color = plot_kwargs.get("color","blue"))
         
-        # add vline at start 
-        ax.axvline(t0, 
-                   color=vline_kwargs.get("color","red"),
-                    linestyle=vline_kwargs.get("linestyle",'--'),
-                    )
+
         # add x tick at center of snippet
         x_tick_vals.append(t0 + single_snippet_time_vec[len(single_snippet_time_vec)//2])
 
@@ -616,19 +611,20 @@ def plot_ordered_snippets(snippet_trace_list,
     ax.set_xticks(x_tick_vals)
     ax.set_xticklabels(list(map(lambda dist: f"{dist:.0f}",snippet_presentation_distances)))    
 
-    ax.set_xlabel('Distance [μm]')
+    ax.set_xlabel('Distance to RF center [μm]')
     ax.set_ylabel('Fluorescence [a.u.]')
     
     if show_legend:
-        axvline_label=vline_kwargs.get("label","snippet start")
-        axvspan_label=stim_onset_patch_kwargs.get("label","stimulus presentation")
+        axvspan_label=stim_onset_patch_kwargs.get("label","Stimulus presentation")
 
         # add proxy artists
-        from matplotlib.lines import Line2D
         from matplotlib.patches import Patch
-        proxy_lines = [Line2D([0], [0], color=vline_kwargs.get("color","red"), linestyle=vline_kwargs.get("linestyle",'--'), label=axvline_label),
-                       Patch(facecolor=stim_onset_patch_kwargs.get("color","yellow"), alpha=stim_onset_patch_kwargs.get("alpha",0.3), label=axvspan_label)]
-        ax.legend(handles=proxy_lines, loc='upper right')
+        proxy_lines = [Patch(facecolor=stim_onset_patch_kwargs.get("color","yellow"), alpha=stim_onset_patch_kwargs.get("alpha",0.3), label=axvspan_label)]
+        ax.legend(handles=proxy_lines,
+                  frameon=False, 
+                bbox_to_anchor=(1.0, 1.15),  # (x, y) position relative to the plot
+
+                  loc='upper right')
 
 
 def get_str_from_field_key(field_key,only_these=["exp_num","field"]):
@@ -733,7 +729,6 @@ def wrapper_scatter_response_distance(
 
     else:
         raise ValueError(f"Unknown measure {measure}")
-    assert 12 in full_df["roi_id"].values, "Debugging assert"
     
     # sns.scatterplot(full_df,
     #                 x="distance",
@@ -754,12 +749,18 @@ def wrapper_scatter_response_distance(
     # )
 
     # First make the scatter plot
+
+    # create color palette
+    palette = sns.color_palette("tab10", n_colors=len(full_df['roi_id'].unique()))
+    color_map = {roi_id: palette[i] for i, roi_id in enumerate(full_df['roi_id'].unique())}
+
     sns.scatterplot(
         data=full_df,
         x="distance",
         y=measure,
         hue="roi_id",
         ax=ax,
+        palette = color_map,
         **plot_kwargs
     )
     
@@ -775,30 +776,59 @@ def wrapper_scatter_response_distance(
                 order=2,
                 scatter=False,
                 ci = None,
-                line_kws={"linewidth":0.3},
+                line_kws={"linewidth":0.3,"color": color_map[roi_id]},
                 scatter_kws ={"legend":False},
                 label=None,
             )
+    # add one overall polynomial regression line: black thick
+    sns.regplot(
+        x="distance", 
+        y=measure,
+        data=full_df,
+        ax=ax,
+        order=2,
+        scatter=False,
+        ci = None,
+        line_kws={"linewidth":1.5,"color": "black"},
+        scatter_kws ={"legend":False},
+        label="overall fit",
+    )
+
 
     for spine_name in ["top", "right"]:
         ax.spines[spine_name].set_visible(False)
-    ax.set_xlabel("Distance [μm]")
-    measure_string = "Mean Fluorescence [a.u.]" if measure == "response_mean" else "Fluorescence Extreme [a.u.]"
+    ax.set_xlabel("Distance to RF center [μm]")
+    measure_string = "Mean fluorescence change [a.u.]" if measure == "response_mean" else "Fluorescence Extreme [a.u.]"
     ax.set_ylabel(measure_string)
 
     if show_legend:
         ax.legend(title="Roi ID", loc='upper right')
     else:
         ax.legend_.remove()
+
+    # add projx scatter artist: one scatter dot in grey saying "single rgc response (one color = one rgc)"
+    import matplotlib.lines as mlines
+
+    # Create a single grey dot as a legend handle
+    proxy_dot = mlines.Line2D([], [], color='grey', marker='o', linestyle='None', label='Single RGC response\n(one color = one RGC)')
+    proxy_full_reg= mlines.Line2D([], [], color='black', linestyle='-', linewidth=1.5, label='Overall fit')
+    proxy_single_reg= mlines.Line2D([], [], color='grey', linestyle='-', linewidth=0.3, label='RGC-specific fit')
+
+    # Add the legend
+    ax.legend(handles=[proxy_dot,
+                       proxy_full_reg,
+                       proxy_single_reg],
+            frameon=False,
+            bbox_to_anchor=(1.0, 1.0),
+            loc='upper right')   
     return ax
+
 
     # TODO:
     # 1) add general cmap for many objects in stylesheet
     # 2) make regression lines same color 
     # 3) add some pseudo label for dots rois
-    
-    # 1) for figure b) remove vline
-    # 2) add box around legend color or move outside plot
+
 
 def wrapper_plot_one_roi_ordered_snippets(
         field_key,
@@ -806,7 +836,6 @@ def wrapper_plot_one_roi_ordered_snippets(
         bsl_correction_method = "first",
         stim_name = "off_big",
         plot_kwargs = {},
-        vline_kwargs = {},
         time_buffer_between_snippets = 0,
         show_legend=False,
         ax = None,
@@ -827,7 +856,7 @@ def wrapper_plot_one_roi_ordered_snippets(
                           single_snippet_dt,
                           snippet_presentation_distances,
                           time_buffer_between_snippets = time_buffer_between_snippets,
-                          plot_kwargs = plot_kwargs,vline_kwargs= vline_kwargs,show_legend =show_legend,ax = ax)
+                          plot_kwargs = plot_kwargs,show_legend =show_legend,ax = ax)
     
 
 
@@ -837,7 +866,6 @@ def wrapper_plot_rois_list_ordered_snippets(
         bsl_correction_method = "first",
         stim_name = "off_big",
         plot_kwargs = {},
-        vline_kwargs = {},
         time_buffer_between_snippets = 0,
         ax = None,
         cond2_value = None,
@@ -861,7 +889,6 @@ def wrapper_plot_rois_list_ordered_snippets(
             bsl_correction_method=bsl_correction_method,
             stim_name=stim_name,
             plot_kwargs = plot_kwargs,
-            vline_kwargs = vline_kwargs,
             time_buffer_between_snippets = time_buffer_between_snippets,
             ax = ax[i],
             cond2_value = cond2_value,

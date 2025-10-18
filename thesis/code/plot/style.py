@@ -13,7 +13,7 @@ def get_palette(_type):
     if _type == 'online_offline':
         return online_offline_dict
     else:
-        raise NotImplementedError(indicator)
+        raise NotImplementedError("")
 
 
 def get_group_color(group, indicator):
