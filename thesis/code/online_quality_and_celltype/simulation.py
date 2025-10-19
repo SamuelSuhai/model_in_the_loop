@@ -274,14 +274,21 @@ def wrapper_sim(target, prob_type, C,stim_min =4, rest_min=25, switch_min=2, pip
         )
 
 
-        # gb_strategy = df.groupby("strategy")
-        # by_strategy = gb_strategy.agg(
 
+        by_strategy = df.groupby("strategy").agg(
+            mean_yield=("yield_cells", "mean"),
+            median_yield=("yield_cells", "median"),
+            std_yield=("yield_cells", "std"),
+            mean_fields=("fields_visited", "mean"),
+            mean_time=("time_used", "mean")
+        ).reset_index()
+        
         # df["precentage_gain"] = df.apply(lambda row: 100 * row[]
 
         online_yield = by_strategy.loc[by_strategy["strategy"] == "online", "mean_yield"].item()
         offline_yield = by_strategy.loc[by_strategy["strategy"] == "offline", "mean_yield"].item()
         percentage_gain = 100 *  online_yield / offline_yield - 100 if offline_yield > 0 else np.nan
+        
         type_results.append(
             {
                 "target_type_idx": _target,
