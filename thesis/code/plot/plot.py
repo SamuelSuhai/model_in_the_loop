@@ -40,6 +40,8 @@ def set_rc_params(notebook_dpi=120, kind='paper'):
     plt.rcParams['figure.figsize'] = (FULLPAGE_WIDTH, FULLPAGE_WIDTH / 3)
     plt.rcParams['figure.dpi'] = notebook_dpi  # only affects the notebook
 
+def figsize_from_frac(w,h):
+    return(FULLPAGE_WIDTH*w, FULLPAGE_WIDTH*h)
 
 def set_rc_poster_params():
     set_rc_params()

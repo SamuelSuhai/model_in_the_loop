@@ -508,8 +508,17 @@ def create_confusion_matrices(df, offline_col_grouped, online_col_grouped, max_t
 ############################################################################# Plotting ##########################################################
 
 
-def plot_confusion_matrix(matrix, is_counts=True, max_type=32, figsize=(20, 16), 
-                          cmap='Blues', annot_fmt='.2f', hide_zero=True, applied_thresholds=None,**heatmap_kws):
+def plot_confusion_matrix(matrix, 
+                          is_counts=True, 
+                          max_type=32, 
+                          figsize=(20, 16), 
+                          cmap='Blues', 
+                          annot_fmt='.2f', 
+                          hide_zero=True, 
+                          applied_thresholds=None,
+                          cbar_kws = {},
+                          round_to=False,
+                          **heatmap_kws):
     """
     Plot a single confusion matrix (either counts or probabilities).
     
@@ -546,14 +555,22 @@ def plot_confusion_matrix(matrix, is_counts=True, max_type=32, figsize=(20, 16),
     fmt = 'd' if is_counts else annot_fmt
     label = 'Count' if is_counts else 'Probability'
     
+    if round_to:
+        matrix = matrix.round(round_to)
+    
+
     if hide_zero:
-        mask = matrix < 0.01 if not is_counts else matrix == 0
+        if isinstance(hide_zero,float):
+            thresh = hide_zero
+        else:
+            thresh = 0.01
+        mask = matrix < thresh if not is_counts else matrix == 0
         heatmap_kws['mask'] = mask
 
     
     # Plot the matrix
     sns.heatmap(matrix, annot=True, fmt=fmt, cmap=cmap, 
-                ax=ax, cbar_kws={'label': label},**heatmap_kws)
+                ax=ax, cbar_kws={'label': label, **cbar_kws},**heatmap_kws)
     
     # Update labels
     ax.set_xlabel('Online Cell Type')
@@ -584,8 +601,8 @@ def plot_confusion_matrix(matrix, is_counts=True, max_type=32, figsize=(20, 16),
 
 def plot_celltype_confusion_matrix(df, offline_col='offline_cell_type', online_col='online_cell_type', 
                                   max_type=32, figsize=(20, 16), cmap='Blues', annot_fmt='.2f',
-                                  plot_counts=True, save_path=None,
-                                  chirp_qidx_threshold=None, mb_qidx_threshold=None,
+                                  plot_counts=True, save_path=None, hide_zero=True,cbar_kws = {},
+                                  chirp_qidx_threshold=None, mb_qidx_threshold=None,round_to=False,
                                   chirp_percentile=None, mb_percentile=None,nan_strategy='drop',
                                   heatmap_kws: Dict = {}):
     """
@@ -652,6 +669,9 @@ def plot_celltype_confusion_matrix(df, offline_col='offline_cell_type', online_c
         figsize=figsize, 
         cmap=cmap, 
         annot_fmt=annot_fmt,
+        hide_zero=True,
+        cbar_kws = cbar_kws,
+        round_to= round_to,
         applied_thresholds=applied_thresholds,
         **heatmap_kws
     )
@@ -673,7 +693,9 @@ def plot_celltype_confusion_matrix(df, offline_col='offline_cell_type', online_c
 def plot_percentage_gain(results_df: pd.DataFrame,
                          celltype_col: str = 'target_type_idx',
                          percentage_gain_col: str = 'percentage_gain',
-                         figsize = (12,7))-> Tuple[plt.Figure, plt.Axes]:
+                        subplots_kws = {}, 
+                        plt_kws = {},
+                        open_bar_celltypes = [])-> Tuple[plt.Figure, plt.Axes]:
     """
     """
 
@@ -687,32 +709,55 @@ def plot_percentage_gain(results_df: pd.DataFrame,
     df = df.sort_values('celltype')
     
     # Create figure and axis
-    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    fig, ax = plt.subplots(1, 1, **subplots_kws)
     
     # Create bar colors based on percentage gain
-    bar_colors = ['green' if gain >= 0 else 'red' for gain in df[percentage_gain_col]]
-    
-    # Plot percentage gain as bars
-    bars = ax.bar(
-        df['celltype'], 
-        df[percentage_gain_col],
-        color=bar_colors,
-        alpha=0.7,
-        width=0.7
-    )
-    
+    gains = df[percentage_gain_col].to_list()
+    celltypes = df['celltype'].to_list()
+    bar_colors = ['green' if gain >= 0 else 'red' for gain in gains]
+
+    y_max = max(gains) * 1.1
+    y_min = min(gains) * 1.1
+
+    for ct,gain,color in zip(celltypes,gains,bar_colors,strict=True):
+        if ct in open_bar_celltypes:
+            bar_kwas = {"x": ct,
+                "bottom": y_min,
+                "height": y_max - y_min,
+                "color": 'white',
+                "edgecolor": "grey",
+                "linewidth": 2,
+                "hatch": "//",
+                "width": 0.7,
+                "alpha": 0.3,
+                "zorder": 0,
+            }
+        else:
+            bar_kwas = {"x": ct,
+                "height": gain,
+                "color": color,
+                "width": 0.7,
+                "alpha": 0.7,
+            }
+       
+        ax.bar(
+            **bar_kwas
+        )
+        
+
     # Add horizontal dotted line at y=0
     ax.axhline(y=0, color='black', linestyle=':', linewidth=1.5, alpha=0.7)
     
     # Ensure there's an x-tick for each cell type
-    ax.set_xticks(df['celltype'].unique())
+    celltypes = df['celltype'].unique()
+    ax.set_xticks(celltypes,celltypes,rotation=45)
     
     # Add grid for better readability
     ax.grid(True, linestyle='--', alpha=0.7, axis='y')
     
     # Set labels and title
-    ax.set_xlabel('Cell Type')
-    ax.set_ylabel('Yield Increase [%]')
+    ax.set_xlabel('Cell type')
+    ax.set_ylabel('Yield increase [%]')
     
 
     
@@ -737,7 +782,8 @@ def add_terciles(quality_pivot):
     return quality_pivot
 
 
-def plot_ballpark_quality_contingency(quality_pivot):
+def plot_ballpark_quality_contingency(quality_pivot,
+                                      subplot_kws = {}, heatmap_kws = {}):
     
     df = quality_pivot.copy()
     # add terciles
@@ -746,23 +792,30 @@ def plot_ballpark_quality_contingency(quality_pivot):
     counts_crosstab = pd.crosstab(df['n1_tercile'],df['cl_tercile'],rownames=['Offline Quality'],colnames=['Online Quality'])
     prob_crosstab = counts_crosstab.div(counts_crosstab.sum(axis=1), axis=0)
     
-    fig,ax = plt.subplots(1,1)
-    sns.heatmap(counts_crosstab, ax =ax,annot=True, fmt=".2f", cmap="Blues",cbar_kws={'label': "Count"})
-    
-    ax.set_xlabel('Online Quality')
-    ax.set_ylabel('Offline Quality')
-    ax.set_title(f'Total: {len(df)} fields')
+    fig,ax = plt.subplots(1,1, **subplot_kws)
+    heatmap = sns.heatmap(counts_crosstab, ax =ax,
+                annot=True, 
+                fmt=".0f", 
+                cmap="Blues",
+                cbar_kws={'label': "Count"},
+                **heatmap_kws)
+    cbar = heatmap.collections[0].colorbar
+    cbar.set_ticks([])
+    ax.set_xlabel('Online quality tercile')
+    ax.set_ylabel('Offline quality tercile')
+    ax.set_title(f'Total: {len(df)} recording fields')
 
     
     return fig,ax
 
-def plot_quality_scatter(quality_pivot):
+def plot_quality_scatter(quality_pivot,subplot_kws = {}, scatter_kws = {}):
  
-    fig,ax = plt.subplots()
+    fig,ax = plt.subplots(**subplot_kws)
     xs = quality_pivot['cl']
     ys = quality_pivot['n1']
 
-    ax.scatter(xs, ys, alpha=0.7)
+    
+    scatter = ax.scatter(xs, ys, alpha=0.7,  **scatter_kws)  
 
     max_val = max(ys.max(), xs.max())
     min_val = min(ys.min(), xs.min())
@@ -770,6 +823,9 @@ def plot_quality_scatter(quality_pivot):
 
     ax.set_xlabel('Offline Quality')
     ax.set_ylabel('Online Quality')
+
+    ax.legend([scatter], ['Recording field'], loc='upper left')
+
 
     plt.axis('square')
     plt.xlim(min_val-0.05, max_val+0.05)
