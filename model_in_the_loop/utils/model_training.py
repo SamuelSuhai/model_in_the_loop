@@ -231,10 +231,38 @@ def train_or_refine_member_or_ensemble(model_configs: DictConfig,
     return model, best_model_path
 
 
+def get_predictions_targets_one_dataloader(model: BaseCoreReadout | EnsembleModel,
+                                           session_id: str,
+                                           session_dataloader: data.DataLoader,) ->Tuple[np.ndarray,np.ndarray]:
+    all_preds_session, all_targets_session = [], []
+    
+    # Run model on all test batches
+    with torch.no_grad():
+        model.eval()
+        model.to(DEVICE)
+        for batch in session_dataloader:
+            inputs, targets = batch
+            inputs = inputs.to(DEVICE)
+
+            predictions = model(inputs, data_key=session_id)
+            all_preds_session.append(predictions.squeeze().cpu()) # remove batch dim
+            all_targets_session.append(targets.squeeze().cpu())
+
+    all_preds_session = torch.cat(all_preds_session, dim=0).numpy()
+    all_targets_session = torch.cat(all_targets_session, dim=0).numpy()
+
+
+    return all_preds_session, all_targets_session
+
+
+        
+
+
 def get_single_neuron_split_predictions(dataloaders ,                                           
                                         model: BaseCoreReadout | EnsembleModel, 
                                            split = "test",
-                                           only_this_session_id = None):
+                                           only_this_session_id = None,
+                                           ):
     """
     Gets predicted and actual responses for all neurons in a certain split.
     """
@@ -255,23 +283,13 @@ def get_single_neuron_split_predictions(dataloaders ,
     all_preds = {}
     all_targets = {}
     for session_id, session_dataloader in sessions_to_use.items():
-        all_preds_session, all_targets_session = [], []
         
-        # Run model on all test batches
-        with torch.no_grad():
-            model.eval()
-            model.to(DEVICE)
-            for batch in session_dataloader:
-                inputs, targets = batch
-                inputs = inputs.to(DEVICE)
-                predictions = model(inputs, data_key=session_id)
-                all_preds_session.append(predictions.squeeze().cpu()) # remove batch dim
-                all_targets_session.append(targets.squeeze().cpu())
-        
+        session_pred,session_targets = get_predictions_targets_one_dataloader(model, session_id, session_dataloader)
+
         # Concatenate batch results and compute correlations
-        all_preds[session_id] = torch.cat(all_preds_session, dim=0).numpy()
-        all_targets[session_id] = torch.cat(all_targets_session, dim=0).numpy()
-        
+        all_preds[session_id] = session_pred
+        all_targets[session_id] = session_targets
+
         # same nr of neurons 
         assert  all_preds[session_id].shape[1] == all_targets[session_id].shape[1], f"Number of neurons in predictions and targets do not match for session {session_id}."
 

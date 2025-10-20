@@ -3,8 +3,8 @@ import seaborn as sns
 PALETTE = 'tab10'
 
 online_offline_dict = {
-    'online': sns.color_palette(PALETTE)[2],
-    'offline': sns.color_palette(PALETTE)[1],
+    'online': "dodgerblue",
+    'offline': "black",
 }
 
 
