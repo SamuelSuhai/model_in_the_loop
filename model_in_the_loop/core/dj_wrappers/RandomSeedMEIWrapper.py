@@ -758,43 +758,11 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
                                            new_session_id: str,
                                            neuron_data_dict: Dict[str,ResponsesTrainTestSplit],
                                            mei_generation_params: Dict[str, Any]) -> None:
-        """
-        Adds two columns to the mei data container: 
-        - one with the resonses of each neuron EACH NEURON IN READOUT to all meis THIS IS NOT FILTERED FOR QUALITY. 
-        This so that later the index of the column corresponds to the index of the neuorns in the readouts. 
-        - one with the mean of that response in the optiization time window."""
-
-        # make sure required cols are there
-        required_cols = ['readout_idx', 'roi_id', 'mei']
-        if not all(col in mei_data_container.columns for col in required_cols):
-            raise ValueError(f"mei_data_container must contain the following columns: {required_cols}")
-
-
-        ## responses: use batch of meis
-        mei_batch = mei_data_container['mei'].to_list()
-        device = model.device if isinstance(model,BaseCoreReadout) else model.members[0].device
-        mei_batch = torch.stack(mei_batch, dim=0).to(device)
-        all_neuron_ids_in_readout = list(range(neuron_data_dict[new_session_id].session_kwargs["roi_ids"].shape[0]))
-        all_responses = get_model_mei_response(model = model,
-                                                mei=mei_batch,
-                                                session_id = new_session_id,
-                                                neuron_id = all_neuron_ids_in_readout,)
-        
-        # resonses are shape nr meis, nr time points response, nr neurons in readout 
-        assert all_responses.shape[0] == mei_batch.shape[0], "Number of responses does not match number of MEIs."
-        assert all_responses.shape[2] == len(all_neuron_ids_in_readout)
-        
-        # store the responses in the data container
-        mei_data_container['responses_all_readout_idx'] = list(all_responses)
-
-        # reduce responses to the mean in the response window/ optimization time window.
-        t0 = mei_generation_params["reducer_start"]
-        t1 = t0 + mei_generation_params["reducer_length"]
-        all_mean_responses = np.mean(all_responses[:,t0:t1,:], axis=1) # shape (nr_meis, nr_neurons in readout )
-        assert all_mean_responses.shape[0] == mei_batch.shape[0], "Number of mean responses does not match number of MEIs."
-        assert all_mean_responses.shape[1] == len(all_neuron_ids_in_readout), "Number of mean responses does not match number of neurons."
-        mei_data_container['mean_responses_all_readout_idx'] = list(all_mean_responses)
-
+        get_responses_and_add_to_container(mei_data_container,
+                                           model,
+                                           new_session_id,
+                                           neuron_data_dict,
+                                           mei_generation_params)
 
 
 
@@ -937,3 +905,46 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             print("OpenRetinaHoeflingFormat table is already populated for the given field_key. Skipping analysis.")
 
             
+
+
+def get_responses_and_add_to_container(mei_data_container: pd.DataFrame,
+                                        model:BaseCoreReadout |EnsembleModel,
+                                        new_session_id: str,
+                                        neuron_data_dict: Dict[str,ResponsesTrainTestSplit],
+                                        mei_generation_params: Dict[str, Any]) -> None:
+    """
+    Adds two columns to the mei data container: 
+    - one with the resonses of each neuron EACH NEURON IN READOUT to all meis THIS IS NOT FILTERED FOR QUALITY. 
+    This so that later the index of the column corresponds to the index of the neuorns in the readouts. 
+    - one with the mean of that response in the optiization time window."""
+
+    # make sure required cols are there
+    required_cols = ['readout_idx', 'roi_id', 'mei']
+    if not all(col in mei_data_container.columns for col in required_cols):
+        raise ValueError(f"mei_data_container must contain the following columns: {required_cols}")
+
+
+    ## responses: use batch of meis
+    mei_batch = mei_data_container['mei'].to_list()
+    device = model.device if isinstance(model,BaseCoreReadout) else model.members[0].device
+    mei_batch = torch.stack(mei_batch, dim=0).to(device)
+    all_neuron_ids_in_readout = list(range(neuron_data_dict[new_session_id].session_kwargs["roi_ids"].shape[0]))
+    all_responses = get_model_mei_response(model = model,
+                                            mei=mei_batch,
+                                            session_id = new_session_id,
+                                            neuron_id = all_neuron_ids_in_readout,)
+    
+    # resonses are shape nr meis, nr time points response, nr neurons in readout 
+    assert all_responses.shape[0] == mei_batch.shape[0], "Number of responses does not match number of MEIs."
+    assert all_responses.shape[2] == len(all_neuron_ids_in_readout)
+    
+    # store the responses in the data container
+    mei_data_container['responses_all_readout_idx'] = list(all_responses)
+
+    # reduce responses to the mean in the response window/ optimization time window.
+    t0 = mei_generation_params["reducer_start"]
+    t1 = t0 + mei_generation_params["reducer_length"]
+    all_mean_responses = np.mean(all_responses[:,t0:t1,:], axis=1) # shape (nr_meis, nr_neurons in readout )
+    assert all_mean_responses.shape[0] == mei_batch.shape[0], "Number of mean responses does not match number of MEIs."
+    assert all_mean_responses.shape[1] == len(all_neuron_ids_in_readout), "Number of mean responses does not match number of neurons."
+    mei_data_container['mean_responses_all_readout_idx'] = list(all_mean_responses)

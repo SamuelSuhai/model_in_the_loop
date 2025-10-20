@@ -119,7 +119,7 @@ def find_roi_partner_highest_correl(online_traces: np.ndarray, offline_traces: n
 
 def find_roi_partner(online_traces: pd.DataFrame,offline_traces: pd.DataFrame,corr_thresh=0.7,distance_thresh=10,offline_to_online = True):
     """
-    Maps the rois in template_field_traces to the rois in match_to_these_field_traces based on highest correlation of their traces and the distance or their roi positions.
+    Maps the rois based on highest correlation of their traces and the distance or their roi positions.
     Returns a map from each roi_id in template_field_traces to the roi_id in match_to_these_field_traces
 
     """
