@@ -222,7 +222,7 @@ def plot_online_offline(offline_signals,
     x_range = (stop - start) / MODEL_FRAMERATE
     right_margin = 0.08 * x_range
     x_text = stop / MODEL_FRAMERATE+ 0.06 * x_range
-    y_offset = 1
+    y_offset = 1.5
 
     # get online offline palette
     palette = styler.get_palette('online_offline')

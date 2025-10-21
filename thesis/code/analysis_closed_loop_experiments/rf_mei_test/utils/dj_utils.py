@@ -476,7 +476,12 @@ def wrapper_fetch_and_plot_trace_trigger_triggerinfo_all_rois(
             )
 
 
-def fetch_rois_circle_snippets_df(field_key,roi_id,cond2 =None):
+def fetch_rois_snippets_df(field_key,roi_id,stim_name ='circle',cond2 =None):
+    """
+    
+    """
+
+
     if isinstance(roi_id,Iterable) and not isinstance(roi_id,(str,bytes)):
         query_str_roi = f"roi_id in {tuple(roi_id)}"
     else: 
@@ -486,11 +491,13 @@ def fetch_rois_circle_snippets_df(field_key,roi_id,cond2 =None):
         assert isinstance(cond2,(str,int)), f"Expected cond2 to be str, int got {type(cond2)}"
         query_str_roi = query_str_roi + f" AND cond2 = '{cond2}'"
     
+    stim_query = f"stim_name = '{stim_name}'"
+
     # query fo
     query = (SingleSnippet() * Offline2OnlineRoiId() * StimulusPresentationInfo() * OnlineInferredRFPosition())
-
-    single_roi_df = pd.DataFrame((query & field_key & query_str_roi).fetch(as_dict=True))
-    single_roi_df = single_roi_df[["roi_id",
+    
+    rois_snippets_df = pd.DataFrame((query & field_key & query_str_roi & stim_query).fetch(as_dict=True))
+    rois_snippets_df = rois_snippets_df[["roi_id",
                                    "true_online_roi_id",
                                    "stimulus_type",
                                    "single_snippet",
@@ -501,7 +508,7 @@ def fetch_rois_circle_snippets_df(field_key,roi_id,cond2 =None):
                                    "is_first_pres_of_stimulus",
                                    "cond2"]]
 
-    return single_roi_df
+    return rois_snippets_df
     
 
 
@@ -525,15 +532,16 @@ def drop_first_presentation_of_stim_type(single_snippet_df,verbose=True):
     single_snippet_df = single_snippet_df[single_snippet_df["is_first_pres_of_stimulus"] == 0]
     return single_snippet_df
 
-def add_bsl_corrected_snippets(single_snippet_df,method= "first"):
-    _STIM_DUR_FR = 120
+def add_bsl_corrected_snippets(single_snippet_df,
+                               method= "first",
+                               first_n_frames = 60):
 
     if method == "first":
         func = lambda x: x - x[0]
     elif method == "min":
-        func = lambda x: x - np.min(x[:_STIM_DUR_FR//2])
+        func = lambda x: x - np.min(x[:first_n_frames])
     elif method == "median":
-        func = lambda x: x - np.median(x[:_STIM_DUR_FR//2])
+        func = lambda x: x - np.median(x[:first_n_frames])
     else:
         raise ValueError
 
@@ -545,41 +553,60 @@ def add_bsl_corrected_snippets(single_snippet_df,method= "first"):
 def get_mean_snippet_df(field_key,
                         roi_id,
                         bsl_correction_method = "first",
-                        cond2_value=None):
-    single_roi_df = fetch_rois_circle_snippets_df(field_key,roi_id=roi_id,cond2=cond2_value)
-    single_roi_df = add_bsl_corrected_snippets(single_roi_df,method=bsl_correction_method)
-    snippet_col_name = f"single_snippet_bsl_corrected_{bsl_correction_method}"
-    single_roi_df = add_distance_to_snippet_df(single_roi_df)
-    single_roi_df = drop_first_presentation_of_stim_type(single_roi_df)
+                        stim_name ='circle',
+                        cond2_value=None,
+                        keep_and_agg_more_cols = [],
+                        verbose=True):
+    rois_snippets_df = fetch_rois_snippets_df(field_key,
+                                              roi_id=roi_id,
+                                                stim_name =stim_name,
+                                              cond2=cond2_value)
+    if bsl_correction_method is not None:
+        rois_snippets_df = add_bsl_corrected_snippets(rois_snippets_df,method=bsl_correction_method)
+        snippet_col_name = f"single_snippet_bsl_corrected_{bsl_correction_method}"
+    else:
+        snippet_col_name = "single_snippet"
+    rois_snippets_df = add_distance_to_snippet_df(rois_snippets_df)
+    rois_snippets_df = drop_first_presentation_of_stim_type(rois_snippets_df)
 
-    single_roi_df = single_roi_df[[c for c in single_roi_df.columns if "single_snippet" in c or c in ["roi_id",
+    # keep necesary cols
+    rois_snippets_df = rois_snippets_df[[c for c in rois_snippets_df.columns if "single_snippet" in c or c in ["roi_id",
                                     "stimulus_type",
                                     "online_roi_id",
                                     "distance",
                                     "cond2"]]]
+    if verbose:
+        print(f"Filtered rois_snippets_df to columns: {rois_snippets_df.columns.tolist()}")
 
-
-
-    gb_cols = list(filter(lambda c: not (c == "cond2" or "single_snippet" in c), single_roi_df.columns))
-    grouped_df = single_roi_df.groupby(gb_cols,as_index=False)
+    # group by all columns except cond2 and single_snippet, and average the snippets
+    gb_cols = list(filter(lambda c: not (c == "cond2" or "single_snippet" in c), rois_snippets_df.columns))
+    grouped_df = rois_snippets_df.groupby(gb_cols,as_index=False)
     agg_func = lambda x: np.mean(np.stack(x.to_list()),axis=0)
-    average_df = grouped_df[snippet_col_name].agg(
+    
+    # average over cond2 valsues: all NOTE: this can cause problems for triggerstarts
+    average_df = grouped_df[[snippet_col_name] + keep_and_agg_more_cols].agg(
         func = agg_func
     )
     sorted_avg_df = average_df.sort_values("distance",ascending=True)
 
+    print(f"output df col names: {sorted_avg_df.columns.tolist()}")
     return sorted_avg_df, snippet_col_name
 
 
 
 def plot_ordered_snippets(snippet_trace_list,
                             single_snippet_dt,
-                            snippet_presentation_distances,
                             time_buffer_between_snippets = 0,
                             ax =None,
                             plot_kwargs = {},
                             stim_onset_patch_kwargs = {},
+                            x_tick_lables = None,
+                            x_ticks_kwargs = {},
                             show_legend=False):
+    """
+    Can be used to plot snippets in snippet_trace_list,
+    """
+
     if ax is None:
         fig, ax = plt.subplots()
     single_snippet_time_vec = np.arange(len(snippet_trace_list[0])) * single_snippet_dt
@@ -609,7 +636,10 @@ def plot_ordered_snippets(snippet_trace_list,
 
     # add x ticks with distance labels
     ax.set_xticks(x_tick_vals)
-    ax.set_xticklabels(list(map(lambda dist: f"{dist:.0f}",snippet_presentation_distances)))    
+    if x_tick_lables is not None:
+        ax.set_xticklabels(x_tick_lables, **x_ticks_kwargs)
+    else:
+        ax.set_xticklabels([ i for i in range(len(snippet_trace_list))])    
 
     ax.set_xlabel('Distance to RF center [μm]')
     ax.set_ylabel('Fluorescence [a.u.]')
@@ -851,13 +881,59 @@ def wrapper_plot_one_roi_ordered_snippets(
         snippet_presentation_distances= get_snippet_trace_data(mean_df,
                                                                 snippet_col_name,
                                                                 stim_name=stim_name)
-                
+
+    # get distance related x tick labels
+    x_tick_lables = list(map(lambda dist: f"{dist:.0f}",snippet_presentation_distances))
+     
+
+    # plot snippets by distance             
     plot_ordered_snippets(snippet_trace_list,
                           single_snippet_dt,
                           snippet_presentation_distances,
                           time_buffer_between_snippets = time_buffer_between_snippets,
+                          x_tick_lables = x_tick_lables,
                           plot_kwargs = plot_kwargs,show_legend =show_legend,ax = ax)
     
+def wrapper_plot_one_roi_successive_snippets(
+            field_key,
+            roi_id,
+            bsl_correction_method = "first",
+            cl_stim_family = "optstim",
+            plot_kwargs = {},
+            time_buffer_between_snippets = 0,
+            show_legend=False,
+            ax = None,
+            cond2_value = None,
+            ):
+
+    # fetch and process df
+    mean_df,snippet_col_name = get_mean_snippet_df(field_key,
+                                                   roi_id,bsl_correction_method=bsl_correction_method,
+                                                    stim_name=cl_stim_family,
+                                                    keep_and_agg_more_cols = ["single_snippet_t0"],
+                                                   cond2_value=cond2_value)
+    # select only the snippets with zero distance 
+    sub_df =mean_df[mean_df["distance"] == 0]
+
+    # group by t0
+    print(f"Cols of sub df: {sub_df.columns.tolist()}")
+    sub_df = sub_df.sort_values("single_snippet_t0",ascending=True)
+    snippet_trace_list = sub_df[snippet_col_name].to_list()
+    print([len(s) for s in snippet_trace_list])
+    single_snippet_dt = 1/60
+
+    # x tick labels are stimulus type
+    x_tick_lables = sub_df["stimulus_type"].to_list()
+
+    # plot them
+    plot_ordered_snippets(snippet_trace_list,
+                          single_snippet_dt,
+                            time_buffer_between_snippets = time_buffer_between_snippets,
+                            x_tick_lables = x_tick_lables,
+                            x_ticks_kwargs = {"rotation":45},
+                            plot_kwargs = plot_kwargs,
+                            show_legend =show_legend,
+                            ax = ax)
 
 
 def wrapper_plot_rois_list_ordered_snippets(
