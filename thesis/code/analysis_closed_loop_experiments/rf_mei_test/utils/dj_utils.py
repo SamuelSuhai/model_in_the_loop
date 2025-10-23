@@ -3,6 +3,10 @@ from collections.abc import Iterable
 from numbers import Integral
 from thesis.code.analysis_closed_loop_experiments.rf_mei_test.rf_mei_test_schema import *
 from thesis.code.analysis_closed_loop_experiments.rf_mei_test.rf_mei_test_tables import CIRCLE_TYPES
+from thesis.code.analysis_closed_loop_experiments.rf_mei_test.utils.plot_utils import (add_mulitgroup_proxy_legend,plot_mulit_group_scatter_fits,plot_ordered_snippets,get_celltype_alpha_cmap)
+
+
+from thesis.code.plot.style import get_palette
 import datajoint as dj
 from omegaconf import DictConfig, ListConfig
 import matplotlib.pyplot as plt
@@ -51,6 +55,20 @@ def populate_user(recordings ="FloDeja",clear=False):
     
 
     assert os.path.isdir(userinfo['data_dir'])
+
+
+
+def populate_cascade_params(clear=False) -> None:
+
+    if clear:
+        CascadeTraceParams().delete()
+        CascadeParams().delete()
+        return
+    
+     # spike estimation
+
+    CascadeTraceParams().add_default(stim_names=['mouse_cam','optstim'],skip_duplicates=True)
+    CascadeParams().add_default(model_name = 'Global_EXC_7.8125Hz_smoothing200ms_causalkernel',skip_duplicates=True) #
 
 def populate_experiment_field_presentation(clear=False,safemode=True,processes=MULTIPROCESSING_THREADS, display_progress=True) -> None:
     """
@@ -151,10 +169,19 @@ def add_params(table_parameters, recordings = "FloDeja",clear=False) -> None:
 
 
     # spike estimation
-    CascadeTraceParams().add_default(stim_names=['mouse_cam'])
+    CascadeTraceParams().add_default(stim_names=['mouse_cam','optstim'])
     CascadeParams().add_default(model_name = 'Global_EXC_7.8125Hz_smoothing200ms_causalkernel')
 
 
+def populate_cascade_tabs(clear=False,safemode=True,processes=MULTIPROCESSING_THREADS, display_progress=True) -> None:
+
+    if clear:
+        CascadeTraces().delete(safemode=safemode)
+        CascadeSpikes().delete(safemode=safemode)
+    
+        return
+    CascadeTraces().populate(processes=processes, display_progress=display_progress)
+    CascadeSpikes().populate(processes=processes, display_progress=display_progress)
 
 def populate_DN(clear =False,safemode=True,processes=MULTIPROCESSING_THREADS, display_progress=True) -> None:
     if clear:
@@ -170,6 +197,25 @@ def populate_DN(clear =False,safemode=True,processes=MULTIPROCESSING_THREADS, di
     FitGauss2DRF().populate(processes=processes, display_progress=display_progress)
 
 
+def populate_averages(clear=False,safemode=True,processes=MULTIPROCESSING_THREADS, display_progress=True) -> None:
+    if clear:
+        Averages().delete(safemode=safemode)
+        return
+    Averages().populate(processes=processes, display_progress=display_progress)
+
+
+
+def populate_celltype_assignment(clear=False,safemode=True,processes=MULTIPROCESSING_THREADS, display_progress=True) -> None:
+    if clear:
+        ChirpQI().delete(safemode=safemode)
+        OsDsIndexes().delete(safemode=safemode)
+        Baden16Traces().delete(safemode=safemode)
+        CelltypeAssignment().delete(safemode=safemode)
+        return
+    ChirpQI().populate(processes=processes, display_progress=display_progress)
+    OsDsIndexes().populate(processes=processes, display_progress=display_progress)
+    Baden16Traces().populate(processes=processes, display_progress=display_progress)
+    CelltypeAssignment().populate(processes=processes, display_progress=display_progress)
 
 def add_all_stimuli(table_parameters) -> None:
 
@@ -476,14 +522,17 @@ def wrapper_fetch_and_plot_trace_trigger_triggerinfo_all_rois(
             )
 
 
-def fetch_rois_snippets_df(field_key,roi_id,stim_name ='circle',cond2 =None):
+def fetch_rois_snippets_df(field_key,
+                           roi_id,
+                           stim_name ='circle',
+                           cond2 =None):
     """
     
     """
 
 
     if isinstance(roi_id,Iterable) and not isinstance(roi_id,(str,bytes)):
-        query_str_roi = f"roi_id in {tuple(roi_id)}"
+        query_str_roi = f"roi_id in {tuple(map(int,roi_id))}"
     else: 
         query_str_roi = f"roi_id='{roi_id}'" 
 
@@ -548,7 +597,32 @@ def add_bsl_corrected_snippets(single_snippet_df,
     single_snippet_df[f"single_snippet_bsl_corrected_{method}"] = single_snippet_df["single_snippet"].apply(func)
     return single_snippet_df
 
+def fetch_all_fields_with_stm(stim_name):
 
+    return (Field().proj() & (Presentation().proj() & dict(stim_name=stim_name))).fetch(as_dict=True)
+
+
+def average_df_over_colvalues(
+        df: pd.DataFrame,
+        cols_to_keep: List[str],
+        cols_to_average: List[str],
+    ) -> pd.DataFrame:
+    """
+    For each unique combination of values in cols_to_keep, average the values in cols_to_average"""
+
+    # groupby all columns except cols_to_average_over and cols_to_average
+    
+    print(f"Grouping by columns: {cols_to_keep}, reducing df cols over {set(df.columns) - set(cols_to_keep)}")
+    for c in cols_to_keep:
+        assert not isinstance(df[c].iloc[0], np.ndarray), f"Column {c} is not suitable for grouping, contains ndarray."
+
+    grouped_df = df.groupby(cols_to_keep,as_index=False)
+    agg_func = lambda x: np.mean(np.stack(x.to_list()),axis=0)
+
+    average_df = grouped_df[cols_to_average].agg(
+        func = agg_func
+    )
+    return average_df
 
 def get_mean_snippet_df(field_key,
                         roi_id,
@@ -556,105 +630,45 @@ def get_mean_snippet_df(field_key,
                         stim_name ='circle',
                         cond2_value=None,
                         keep_and_agg_more_cols = [],
+                        drop_first_presentation=True,
                         verbose=True):
     rois_snippets_df = fetch_rois_snippets_df(field_key,
                                               roi_id=roi_id,
                                                 stim_name =stim_name,
                                               cond2=cond2_value)
+    print(f"Columns of fetched rois_snippets_df: {rois_snippets_df.columns.tolist()}")
     if bsl_correction_method is not None:
         rois_snippets_df = add_bsl_corrected_snippets(rois_snippets_df,method=bsl_correction_method)
         snippet_col_name = f"single_snippet_bsl_corrected_{bsl_correction_method}"
     else:
         snippet_col_name = "single_snippet"
     rois_snippets_df = add_distance_to_snippet_df(rois_snippets_df)
-    rois_snippets_df = drop_first_presentation_of_stim_type(rois_snippets_df)
+    if drop_first_presentation:
+        rois_snippets_df = drop_first_presentation_of_stim_type(rois_snippets_df)
 
     # keep necesary cols
     rois_snippets_df = rois_snippets_df[[c for c in rois_snippets_df.columns if "single_snippet" in c or c in ["roi_id",
-                                    "stimulus_type",
-                                    "online_roi_id",
-                                    "distance",
-                                    "cond2"]]]
+                                        "stimulus_type",
+                                        "online_roi_id",
+                                        "distance",
+                                        "cond2"]]]
     if verbose:
         print(f"Filtered rois_snippets_df to columns: {rois_snippets_df.columns.tolist()}")
 
-    # group by all columns except cond2 and single_snippet, and average the snippets
-    gb_cols = list(filter(lambda c: not (c == "cond2" or "single_snippet" in c), rois_snippets_df.columns))
-    grouped_df = rois_snippets_df.groupby(gb_cols,as_index=False)
-    agg_func = lambda x: np.mean(np.stack(x.to_list()),axis=0)
+    # average away
+    cols_iding_rows = ["roi_id",
+                       "stimulus_type",
+                       "distance"]
+    average_df = average_df_over_colvalues(rois_snippets_df,
+                                           cols_to_keep=cols_iding_rows,
+                                           cols_to_average=[snippet_col_name])
     
-    # average over cond2 valsues: all NOTE: this can cause problems for triggerstarts
-    average_df = grouped_df[[snippet_col_name] + keep_and_agg_more_cols].agg(
-        func = agg_func
-    )
+    # sort by distance
     sorted_avg_df = average_df.sort_values("distance",ascending=True)
 
     print(f"output df col names: {sorted_avg_df.columns.tolist()}")
     return sorted_avg_df, snippet_col_name
 
-
-
-def plot_ordered_snippets(snippet_trace_list,
-                            single_snippet_dt,
-                            time_buffer_between_snippets = 0,
-                            ax =None,
-                            plot_kwargs = {},
-                            stim_onset_patch_kwargs = {},
-                            x_tick_lables = None,
-                            x_ticks_kwargs = {},
-                            show_legend=False):
-    """
-    Can be used to plot snippets in snippet_trace_list,
-    """
-
-    if ax is None:
-        fig, ax = plt.subplots()
-    single_snippet_time_vec = np.arange(len(snippet_trace_list[0])) * single_snippet_dt
-    t0 = 0
-    x_tick_vals = []
-    for i, snippet in enumerate(snippet_trace_list):
-        time_axis = single_snippet_time_vec + t0
-
-        ax.plot(time_axis, snippet,color = plot_kwargs.get("color","blue"))
-        
-
-        # add x tick at center of snippet
-        x_tick_vals.append(t0 + single_snippet_time_vec[len(single_snippet_time_vec)//2])
-
-        # add patch from half snippet to end
-        stim_onset_patch_start = t0 + single_snippet_time_vec[len(single_snippet_time_vec)//2]
-        stim_onset_patch_end = t0 + single_snippet_time_vec[-1]
-        ax.axvspan(stim_onset_patch_start, stim_onset_patch_end,
-                    color=stim_onset_patch_kwargs.get("color","yellow"), 
-                    alpha=stim_onset_patch_kwargs.get("alpha",0.3),
-                    )
-
-        t0 = time_axis[-1] + time_buffer_between_snippets
-
-    for spine_name in ["top", "right"]:
-        ax.spines[spine_name].set_visible(False)
-
-    # add x ticks with distance labels
-    ax.set_xticks(x_tick_vals)
-    if x_tick_lables is not None:
-        ax.set_xticklabels(x_tick_lables, **x_ticks_kwargs)
-    else:
-        ax.set_xticklabels([ i for i in range(len(snippet_trace_list))])    
-
-    ax.set_xlabel('Distance to RF center [μm]')
-    ax.set_ylabel('Fluorescence [a.u.]')
-    
-    if show_legend:
-        axvspan_label=stim_onset_patch_kwargs.get("label","Stimulus presentation")
-
-        # add proxy artists
-        from matplotlib.patches import Patch
-        proxy_lines = [Patch(facecolor=stim_onset_patch_kwargs.get("color","yellow"), alpha=stim_onset_patch_kwargs.get("alpha",0.3), label=axvspan_label)]
-        ax.legend(handles=proxy_lines,
-                  frameon=False, 
-                bbox_to_anchor=(1.0, 1.15),  # (x, y) position relative to the plot
-
-                  loc='upper right')
 
 
 def get_str_from_field_key(field_key,only_these=["exp_num","field"]):
@@ -719,37 +733,26 @@ def get_polariy_of_cell(df,snippet_col_name,polarity_func):
 
 
 
-def wrapper_scatter_response_distance(
-        field_key,
-        roi_id_list,
-        bsl_correction_method = "median",
-        plot_kwargs = {},
-        show_legend=False,
-        polarity = "on",
-        stimulus_type = "on_small",
-        measure = "response_magnitude",
-        ax = None,
-        cond2_value = None,
-    ):
-
-    # fetch and process df
-    mean_df,snippet_col_name = get_mean_snippet_df(field_key,roi_id_list,bsl_correction_method=bsl_correction_method,cond2_value=cond2_value)
-
-    # add polarity of cell
-    polarity_df = get_polariy_of_cell(mean_df,snippet_col_name,polarity_func)
-    full_df = mean_df.merge(polarity_df,on="roi_id",how="left")
-
-    # filter by polarity and stimulus type
-    full_df = full_df[(full_df["polarity"] == polarity) & (full_df["stimulus_type"] == stimulus_type)]
 
 
-    # get one scalar value per row (snippet): 
-    # the response increase from baseline i.e. the most extreme value of the snippet during stim pres
+def fetch_celltype_df(field_key,
+                      ):
+    
+    query = (CelltypeAssignment() & field_key)
+    celltype_df = pd.DataFrame((query.proj(
+        "roi_id","celltype"
+    )).fetch(as_dict=True))
+    celltype_df = celltype_df[["roi_id","celltype"]]
+    # turn celltype int
+    celltype_df["celltype"] = celltype_df["celltype"].astype(int)
+    celltype_df["roi_id"] = celltype_df["roi_id"].astype(int)
+    return celltype_df
+
+
+
+def add_snippet_scalar_value(full_df,measure,snippet_col_name):
     stim_window_start_fr = len(full_df[snippet_col_name].iloc[0]) // 2
 
-    if ax is None:
-        fig, ax = plt.subplots()
-    
     if measure == "response_magnitude":
         full_df["response_magnitude"] = full_df[snippet_col_name].apply(lambda x: np.max(x[stim_window_start_fr:]) if np.abs(np.max(x[stim_window_start_fr:])) > np.abs(np.min(x[stim_window_start_fr:])) else np.min(x[stim_window_start_fr:]))
     
@@ -759,105 +762,191 @@ def wrapper_scatter_response_distance(
 
     else:
         raise ValueError(f"Unknown measure {measure}")
+
+
+
+def fetch_and_format_data_for_snippet_analysis(
+        field_key: Dict[str,Any] | List[Dict[str,Any]],
+        roi_id_list,
+        bsl_correction_method = "median",
+
+        polarity = "on",
+        stimulus_type = "on_small",
+        measure = "response_mean",
+        drop_first_presentation = True,
+        cond2_value = None,
+        ):
     
-    # sns.scatterplot(full_df,
-    #                 x="distance",
-    #                 y=measure,
-    #                 hue="roi_id",
-    #                 ax = ax,
-    #                 **plot_kwargs)
-    # # Create the plot
-    # g = sns.lmplot(
-    #     data=full_df,
-    #     x="distance", 
-    #     y=measure,
-    #     hue="roi_id",
-    #     col="roi_id" if len(full_df['roi_id'].unique()) <= 4 else None,  # Only use columns if few ROIs
-    #     order=2,  # Quadratic fit (polynomial degree 2)
-    #     scatter_kws=plot_kwargs,
-    #     ci=None  # Disable confidence intervals for cleaner look
-    # )
 
-    # First make the scatter plot
+    if isinstance(field_key,dict):
+        field_key = [field_key]
+    full_df_list = []
+    for fk in field_key:
+        # fetch and process df
+        mean_df,snippet_col_name = get_mean_snippet_df(fk,
+                                                       roi_id_list,
+                                                       bsl_correction_method=bsl_correction_method,
+                                                       drop_first_presentation = drop_first_presentation,cond2_value=cond2_value)
 
-    # create color palette
-    palette = sns.color_palette("tab10", n_colors=len(full_df['roi_id'].unique()))
-    color_map = {roi_id: palette[i] for i, roi_id in enumerate(full_df['roi_id'].unique())}
+        # add polarity of cell
+        polarity_df = get_polariy_of_cell(mean_df,snippet_col_name,polarity_func)
+        full_df = mean_df.merge(polarity_df,on="roi_id",how="left")
 
-    sns.scatterplot(
-        data=full_df,
-        x="distance",
-        y=measure,
-        hue="roi_id",
-        ax=ax,
-        palette = color_map,
-        **plot_kwargs
-    )
+        # filter by polarity and stimulus type
+        full_df = full_df[(full_df["polarity"] == polarity) & (full_df["stimulus_type"] == stimulus_type)]
+
+        # add celltype info
+        celltype_df = fetch_celltype_df(fk)
+        full_df = full_df.merge(celltype_df,on="roi_id",how="left")
+        full_df_list.append(full_df)
+
+    full_df = pd.concat(full_df_list)
+    add_snippet_scalar_value(full_df,measure,snippet_col_name)
+
+    return full_df
+
+
+
+
+
+
+
+
+
+
+def wrapper_scatter_response_distance_celltype(
+        field_key: Dict[str,Any] | List[Dict[str,Any]],
+        roi_id_list,
+        bsl_correction_method = "median",
+        plot_kwargs = {},
+        show_legend=False,
+        polarity = "on",
+        stimulus_type = "on_small",
+        measure = "response_mean",
+        drop_first_presentation = True,
+        ax = None,
+        cond2_value = None,
+        ):
     
-    # Then add polynomial fits for each ROI
-    for roi_id in full_df['roi_id'].unique():
-        roi_data = full_df[full_df['roi_id'] == roi_id]
-        if len(roi_data) >= 3:  # Need at least 3 points for a quadratic fit
-            sns.regplot(
-                x="distance", 
-                y=measure,
-                data=roi_data,
-                ax=ax,
-                order=2,
-                scatter=False,
-                ci = None,
-                line_kws={"linewidth":0.3,"color": color_map[roi_id]},
-                scatter_kws ={"legend":False},
-                label=None,
-            )
-    # add one overall polynomial regression line: black thick
-    sns.regplot(
-        x="distance", 
-        y=measure,
-        data=full_df,
-        ax=ax,
-        order=2,
-        scatter=False,
-        ci = None,
-        line_kws={"linewidth":1.5,"color": "black"},
-        scatter_kws ={"legend":False},
-        label="overall fit",
-    )
+
+    if isinstance(field_key,dict):
+        field_key = [field_key]
+    full_df_list = []
+    for fk in field_key:
+        # fetch and process df
+        mean_df,snippet_col_name = get_mean_snippet_df(fk,
+                                                       roi_id_list,
+                                                       bsl_correction_method=bsl_correction_method,
+                                                       drop_first_presentation = drop_first_presentation,cond2_value=cond2_value)
+
+        # add polarity of cell
+        polarity_df = get_polariy_of_cell(mean_df,snippet_col_name,polarity_func)
+        full_df = mean_df.merge(polarity_df,on="roi_id",how="left")
+
+        # filter by polarity and stimulus type
+        full_df = full_df[(full_df["polarity"] == polarity) & (full_df["stimulus_type"] == stimulus_type)]
+
+        # add celltype info
+        celltype_df = fetch_celltype_df(fk)
+        full_df = full_df.merge(celltype_df,on="roi_id",how="left")
+        full_df_list.append(full_df)
+
+    full_df = pd.concat(full_df_list)
 
 
-    for spine_name in ["top", "right"]:
-        ax.spines[spine_name].set_visible(False)
-    ax.set_xlabel("Distance to RF center [μm]")
-    measure_string = "Mean fluorescence change [a.u.]" if measure == "response_mean" else "Fluorescence Extreme [a.u.]"
-    ax.set_ylabel(measure_string)
+    if ax is None:
+        fig, ax = plt.subplots()
+    
+    add_snippet_scalar_value(full_df,measure,snippet_col_name)
 
-    if show_legend:
-        ax.legend(title="Roi ID", loc='upper right')
+    scatter_kwargs = plot_kwargs.get("scatter_kwargs",{})
+    single_group_fit_kwargs = plot_kwargs.get("single_group_fit_kwargs",{})
+    overall_fit_kwargs = plot_kwargs.get("overall_fit_kwargs",{})
+    
+    if measure == "response_mean":
+        ylabel = "Mean fluorescence change [a.u.]" 
+    elif measure == "response_magnitude":
+        ylabel = "Peak fluorescence change [a.u.]"
     else:
-        ax.legend_.remove()
+        ylabel = measure
 
-    # add projx scatter artist: one scatter dot in grey saying "single rgc response (one color = one rgc)"
-    import matplotlib.lines as mlines
+    celltypes = np.unique(full_df["celltype"])
+    color_map = get_celltype_alpha_cmap(celltypes=celltypes)
+    ax = plot_mulit_group_scatter_fits(full_df=full_df,
+                                       x = "distance",
+                                        y=measure,
+                                        ax=ax,
+                                        hue="celltype",
+                                        xlabel="Distance to RF center [μm]",
+                                        color_map=color_map,
+                                        ylabel=ylabel,
+                                        scatter_kwargs=scatter_kwargs,
+                                        single_group_fit_kwargs=single_group_fit_kwargs,
+                                        overall_fit_kwargs=overall_fit_kwargs,
+                                        show_legend=show_legend,
+                                  )
 
-    # Create a single grey dot as a legend handle
-    proxy_dot = mlines.Line2D([], [], color='grey', marker='o', linestyle='None', label='Single RGC response\n(one color = one RGC)')
-    proxy_full_reg= mlines.Line2D([], [], color='black', linestyle='-', linewidth=1.5, label='Overall fit')
-    proxy_single_reg= mlines.Line2D([], [], color='grey', linestyle='-', linewidth=0.3, label='RGC-specific fit')
 
-    # Add the legend
-    ax.legend(handles=[proxy_dot,
-                       proxy_full_reg,
-                       proxy_single_reg],
-            frameon=False,
-            bbox_to_anchor=(1.0, 1.0),
-            loc='upper right')   
+
+
+
+def wrapper_scatter_response_distance(
+        field_key,
+        roi_id_list,
+        bsl_correction_method = "median",
+        plot_kwargs = {},
+        show_legend=False,
+        polarity = "on",
+        stimulus_type = "on_small",
+        measure = "response_magnitude",
+        drop_first_presentation = True,
+        add_celltype_info = False,
+        ax = None,
+        cond2_value = None,
+    ):
+
+    # fetch and process df
+    mean_df,snippet_col_name = get_mean_snippet_df(field_key,
+                                                   roi_id_list,
+                                                   bsl_correction_method=bsl_correction_method,
+                                                   drop_first_presentation = drop_first_presentation,cond2_value=cond2_value)
+
+    # add polarity of cell
+    polarity_df = get_polariy_of_cell(mean_df,snippet_col_name,polarity_func)
+    full_df = mean_df.merge(polarity_df,on="roi_id",how="left")
+
+    # filter by polarity and stimulus type
+    full_df = full_df[(full_df["polarity"] == polarity) & (full_df["stimulus_type"] == stimulus_type)]
+
+    # add celltype info
+    if add_celltype_info:
+        celltype_df = fetch_celltype_df(field_key)
+        full_df = full_df.merge(celltype_df,on="roi_id",how="left")
+
+    # get one scalar value per row (snippet): 
+    # the response increase from baseline i.e. the most extreme value of the snippet during stim pres
+    add_snippet_scalar_value(full_df,measure,snippet_col_name)
+
+
+    palette = sns.color_palette("tab20", n_colors=len(roi_id_list))
+    color_map = {roi_id: palette[i] for i,roi_id in enumerate(roi_id_list)}
+    ax = plot_mulit_group_scatter_fits(full_df=full_df,
+                                    x = "distance",
+                                    y=measure,
+
+                                    ax=ax,
+                                    hue="roi_id",
+                                    xlabel="Distance to RF center [μm]",
+                                    ylabel="Mean fluorescence change [a.u.]",
+
+                                  color_map = color_map,
+                                  scatter_kwargs=plot_kwargs.get("scatter_kwargs",{}),
+                                  single_group_fit_kwargs=plot_kwargs.get("single_group_fit_kwargs",{}),
+                                  overall_fit_kwargs=plot_kwargs.get("overall_fit_kwargs",{}),
+                                  show_legend=show_legend,
+                                  )
+
     return ax
-
-
-    # TODO:
-    # 1) add general cmap for many objects in stylesheet
-    # 2) make regression lines same color 
-    # 3) add some pseudo label for dots rois
 
 
 def wrapper_plot_one_roi_ordered_snippets(
@@ -887,9 +976,8 @@ def wrapper_plot_one_roi_ordered_snippets(
      
 
     # plot snippets by distance             
-    plot_ordered_snippets(snippet_trace_list,
-                          single_snippet_dt,
-                          snippet_presentation_distances,
+    plot_ordered_snippets(snippet_trace_list = snippet_trace_list,
+                          single_snippet_dt = single_snippet_dt,
                           time_buffer_between_snippets = time_buffer_between_snippets,
                           x_tick_lables = x_tick_lables,
                           plot_kwargs = plot_kwargs,show_legend =show_legend,ax = ax)
@@ -904,14 +992,17 @@ def wrapper_plot_one_roi_successive_snippets(
             show_legend=False,
             ax = None,
             cond2_value = None,
+            drop_first_presentation = True,
             ):
 
     # fetch and process df
     mean_df,snippet_col_name = get_mean_snippet_df(field_key,
                                                    roi_id,bsl_correction_method=bsl_correction_method,
                                                     stim_name=cl_stim_family,
+                                                    drop_first_presentation = drop_first_presentation,
                                                     keep_and_agg_more_cols = ["single_snippet_t0"],
                                                    cond2_value=cond2_value)
+    print(f"Cols of mean df: {mean_df.columns.tolist()}")
     # select only the snippets with zero distance 
     sub_df =mean_df[mean_df["distance"] == 0]
 
