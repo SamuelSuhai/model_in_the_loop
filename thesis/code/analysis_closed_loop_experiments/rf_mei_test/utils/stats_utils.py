@@ -15,9 +15,11 @@ class PolyRegResult:
 
 
 def _extract_x_y(full_df: pd.DataFrame,x_col:str,y_col:str) -> Tuple[np.ndarray, np.ndarray]:
-
-    x = full_df[x_col].to_array()
-    y = full_df[y_col].to_array()
+    """
+    Returns x,y 
+    """
+    x = full_df[x_col].to_numpy()
+    y = full_df[y_col].to_numpy()
 
     return x,y
     
@@ -77,6 +79,43 @@ def predict_poly(result: PolyRegResult, x_new: np.ndarray) -> np.ndarray:
 
 # ---------- Bootstrap CI band (Seaborn-style) ----------
 
+def bootstrap_parameters_ci(
+    x: np.ndarray,
+    y: np.ndarray,
+    order: int,
+    n_boot: int = 1000,
+    ci: float = 95.0,
+    seed: Optional[int] = None,
+    replace: bool = True,
+    ) -> np.ndarray:
+    """
+    returns bootstrapped cis for parameters in array (2,n_params)
+    """
+
+    rng = np.random.default_rng(seed)
+    x = np.asarray(x, dtype=float).reshape(-1)
+    y = np.asarray(y, dtype=float).reshape(-1)
+    n = x.size
+
+    preds = np.empty((n_boot, order +1), dtype=float)
+    ci_vals = np.empty((2,order +1),dtype = float)
+    for b in range(n_boot):
+        idx = rng.choice(n, size=n, replace=replace)
+        xb, yb = x[idx], y[idx]
+        res_b = fit_poly_ols(xb, yb, order=order)
+        preds[b, :] = res_b.params
+
+    alpha = (100.0 - ci) / 100.0
+    for param_idx in range(preds.shape[1]):
+
+            
+        lo = np.quantile(preds[:,param_idx], alpha / 2,)
+        hi = np.quantile(preds[:,param_idx], 1 - alpha / 2,)
+        ci_vals[0,param_idx] = lo
+        ci_vals[1,param_idx] = hi
+    return ci_vals
+
+
 def bootstrap_curve_ci(
     x: np.ndarray,
     y: np.ndarray,
@@ -116,3 +155,31 @@ def bootstrap_curve_ci(
     lo = np.quantile(preds, alpha / 2, axis=0)
     hi = np.quantile(preds, 1 - alpha / 2, axis=0)
     return lo, hi
+
+
+
+def bootstrap(full_df: pd.DataFrame) ->pd.DataFrame:
+    
+    out = []
+    for celltype in np.unique(full_df["celltype"]):
+
+        print(f"analyzing for type {celltype}")
+
+        sub_df = full_df[full_df["celltype"] == celltype]
+        x,y =_extract_x_y(sub_df,x_col= "distance",y_col = "response_mean")
+
+        ci_vals = bootstrap_parameters_ci(
+            x=x,
+            y=y,
+            order = 1,
+        )
+        for poly_power in range(ci_vals.shape[1]):
+            out.append(
+                {
+                    "celltype":celltype,
+                    "low": ci_vals[0,poly_power],
+                    "high": ci_vals[1,poly_power],
+                    "poly_power":poly_power
+                }
+            )
+    return pd.DataFrame(out)

@@ -10,8 +10,68 @@ from collections import Counter
 
 
 
+def make_plot_df(df, only_order_n=None):
+    """For CI analysis of fits, 
+    Prepare dataframe with midpoint and error sizes, optionally filter poly_power."""
+    if only_order_n is not None:
+        df = df[df["poly_power"] == only_order_n].copy()
+    df = df.copy()
+    df["mid"] = (df["low"] + df["high"]) / 2
+    df["err_low"] = df["mid"] - df["low"]
+    df["err_high"] = df["high"] - df["mid"]
+    return df
 
 
+def plot_conf_intervals(df, ax=None, cmap_by = "celltype", legend_str=None, dodge=0.3,figsize =(4,4)):
+    """Plot confidence intervals per celltype and poly_power."""
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+
+    celltypes = sorted(df["celltype"].unique())
+    levels = sorted(df["poly_power"].unique())
+    if len(levels) == 1:
+        dodge = 0
+    
+    
+    if cmap_by == "celltype":
+        # Create direct mapping of celltypes to colors
+        palette = sns.color_palette("tab10", n_colors=len(celltypes))
+        colors = palette  # Use palette directly
+    elif cmap_by == "poly_power":
+        if len(levels) == 1:
+            colors = ["black"]
+        else:
+            colors = sns.color_palette("viridis", len(levels))
+    else:
+        raise ValueError("cmap_by must be 'celltype' or 'poly_power'")
+       
+        
+    color_map = dict(zip(levels, colors))
+    offsets = np.linspace(-dodge/2, dodge/2, len(levels))
+
+    for i, lvl in enumerate(levels):
+        sub = df[df["poly_power"] == lvl]
+        xs = [celltypes.index(ct) + offsets[i] for ct in sub["celltype"]]
+        for x, ct, mid, err_low, err_high in zip(xs, sub["celltype"], 
+                                                sub["mid"], sub["err_low"], 
+                                                sub["err_high"]):
+            color_idx = celltypes.index(ct)
+            ax.errorbar([x], [mid], yerr=[[err_low], [err_high]],
+                       fmt="o", color=colors[color_idx % len(colors)], 
+                       capsize=3, )#label=str(lvl) if ct == celltypes[0] else "")
+
+    # add vline at zero
+    ax.axhline(0, color='grey', linestyle='--', linewidth=0.3)
+
+    ax.set_xticks(range(len(celltypes)))
+    ax.set_xticklabels(celltypes)
+    ax.set_xlabel("Celltype")
+    ax.set_ylabel("Estimate (± 95% CI)")
+    sns.despine(ax=ax)
+    if len(levels) > 1:
+        labels = [legend_str.get(l, str(l)) if legend_str else str(l) for l in levels]
+        ax.legend(title="poly_power", labels=labels)
+    return fig,ax
 
 
 def add_mulitgroup_proxy_legend(ax: plt.Axes,
@@ -197,7 +257,7 @@ def get_celltype_alpha_cmap(celltypes: List[int]) -> Dict[int,np.ndarray]:
             alpha_values = [1.0]
         else:
             # Create linearly spaced alpha values from 1.0 to 0.5
-            alpha_values = np.linspace(1.0, 0.5, n)
+            alpha_values = np.linspace(1.0, 0.2, n)
         
         # Create a copy and assign alpha values properly
         group = group.copy()
