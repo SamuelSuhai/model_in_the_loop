@@ -50,7 +50,10 @@ def find_offline_roi_id_from_session_dicts(online_roi_id,online_session_dict, of
     for or_roi_id in offline_session_dict["roi_ids"]:
         offline_idx = np.where(offline_session_dict["roi_ids"]== or_roi_id)[0].item()
         or_spikes = offline_session_dict["natural_spikes"][offline_idx]
-        corr = np.corrcoef(online_spikes[~ np.isnan(online_spikes)], or_spikes[~ np.isnan(or_spikes)])[0, 1]
+        nonan_online = online_spikes[~ np.isnan(online_spikes)]
+        nonan_offline = or_spikes[~ np.isnan(or_spikes)]
+        print(nonan_online.shape, nonan_offline.shape)
+        corr = np.corrcoef(nonan_online, nonan_offline)[0, 1]
         if corr > max_corr:
             max_corr = corr
             best_offline_roi_id = or_roi_id
@@ -294,120 +297,321 @@ def select_spikes_by_roi_ids(spikes_dict, roi_ids):
     return selected_spikes
 
 
+# def plot_online_offline_2d(
+#         offline_2d: List[np.ndarray],
+#         online_2d: List[np.ndarray],
+#         add_comparison_array: bool = False,
+#         ncol = 1,
+#         axes = None,
+#         figsize = None,
+#         cmap: str = 'viridis',
+#         add_colorbar: bool = True,
+#         gap_width: int = 2,  # Width of gap between offline and online images
+#         ):
+#     """
+#     Plot offline and online 2D arrays side by side with joint normalization.
+    
+#     Parameters
+#     ----------
+#     offline_2d : List[np.ndarray]
+#         List of 2D arrays representing offline data
+#     online_2d : List[np.ndarray]
+#         List of 2D arrays representing online data (must be same length as offline_2d)
+    
+#     add_comparison_array: bool, optional whether to add a third comparison array (online - offline)
+#     ncol : int, optional
+#         Number of columns in the plot (1 or 2)
+#     axes : np.ndarray, optional
+#         Optional array of axes to plot on, shape (n_pairs,)
+#     figsize : tuple, optional
+#         Figure size (default is calculated based on number of pairs)
+#     cmap : str, optional
+#         Colormap for the plots
+#     add_colorbar : bool, optional
+#         Whether to add a colorbar (only when creating a new figure)
+#     gap_width : int, optional
+#         Width of gap between offline and online images
+        
+#     Returns
+#     -------
+#     fig : matplotlib.figure.Figure
+#         The figure object
+#     axes : np.ndarray
+#         Array of axes
+#     """
+#     assert len(offline_2d) == len(online_2d), "Lists must have the same length"
+#     n_pairs = len(offline_2d)
+#     assert len(online_2d) % ncol == 0, "Number of pairs must be divisible by ncol"
+#     n_rows = n_pairs // ncol
+    
+#     # Create figure and axes if not provided
+#     if axes is None:
+#         if figsize is None:
+#             figsize = (8, 2 * n_pairs)
+        
+#         fig, axes = plt.subplots(n_pairs, 1, figsize=figsize)
+#         created_fig = True
+#         if n_pairs == 1:
+#             axes = np.array([axes])
+#     else:
+#         fig = axes[0].figure if n_pairs > 1 else axes.figure
+#         created_fig = False
+#         if n_pairs == 1 and not isinstance(axes, np.ndarray):
+#             axes = np.array([axes])
+    
+#     # Get style colors
+#     palette = styler.get_palette('online_offline')
+#     offline_color = palette['offline']
+#     online_color = palette['online']
+#     comparison_color = 'purple'  # Color for comparison border
+    
+#     # Store the last imshow object for colorbar
+#     last_im = None
+    
+#     for i in range(n_pairs):
+#         # 1) Joint normalize to [0,1]
+#         offline_data = offline_2d[i]
+#         online_data = online_2d[i]
+        
+#         # Find global min and max across both datasets
+#         all_data = np.concatenate([offline_data.flatten(), online_data.flatten()])
+#         vmin = np.nanmin(all_data)
+#         vmax = np.nanmax(all_data)
+        
+#         # Normalize both datasets using same min/max
+#         if vmax > vmin:
+#             offline_norm = (offline_data - vmin) / (vmax - vmin)
+#             online_norm = (online_data - vmin) / (vmax - vmin)
+#         else:
+#             offline_norm = np.zeros_like(offline_data)
+#             online_norm = np.zeros_like(online_data)
+        
+#         # 2) Create concatenated image with gap
+#         h, w = offline_norm.shape
+#         gap = np.zeros((h, gap_width))
+#         combined_img = np.concatenate([offline_norm, gap, online_norm], axis=1)
+        
+#         # 3) Plot combined image
+#         im = axes[i].imshow(combined_img, cmap=cmap, vmin=0, vmax=1)
+#         last_im = im
+        
+#         # 4) Add colored rectangle borders for each section
+#         # Offline section
+#         rect_off = plt.Rectangle((0-0.5, 0-0.5), w, h, 
+#                           edgecolor=offline_color, facecolor='none', 
+#                           linewidth=3)
+#         axes[i].add_patch(rect_off)
+        
+#         # Online section
+#         rect_on = plt.Rectangle((w+gap_width-0.5, 0-0.5), w, h, 
+#                          edgecolor=online_color, facecolor='none', 
+#                          linewidth=3)
+#         axes[i].add_patch(rect_on)
+        
+#         # Remove axis ticks for cleaner visualization
+#         axes[i].set_xticks([])
+#         axes[i].set_yticks([])
+    
+#     # Add a colorbar if we created a new figure
+#     if created_fig and add_colorbar and last_im is not None:
+#         fig.subplots_adjust(right=0.9)
+#         cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
+#         cbar = fig.colorbar(last_im, cax=cbar_ax)
+#         cbar.set_label('Normalized Value')
+#         plt.tight_layout(rect=[0, 0, 0.9, 0.95])
+    
+#     return fig, axes
+
+from typing import List, Optional, Tuple
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize, TwoSlopeNorm
+from typing import List, Optional, Tuple
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import TwoSlopeNorm
+
 def plot_online_offline_2d(
         offline_2d: List[np.ndarray],
         online_2d: List[np.ndarray],
-        axes = None,
-        figsize = None,
+        add_comparison_array: bool = False,
+        ncol: int = 1,
+        axes: Optional[np.ndarray] = None,
+        figsize: Optional[Tuple[float, float]] = None,
         cmap: str = 'viridis',
+        cmap_comparison: str = 'coolwarm',
         add_colorbar: bool = True,
-        gap_width: int = 2,  # Width of gap between offline and online images
-        ):
+        add_comparison_colorbar: bool = False,
+        gap_width: int = 2,  # Width of gap between sections (in pixels)
+    ):
     """
-    Plot offline and online 2D arrays side by side with joint normalization.
-    
+    Plot offline and online 2D arrays side by side with joint normalization per pair,
+    arranged in an (n_rows x ncol) grid. Optionally add a third comparison panel per pair
+    showing (online - offline) with a symmetric diverging scale that is normalized to the
+    absolute max of the joint offline+online signal across the *entire figure*.
+
     Parameters
     ----------
     offline_2d : List[np.ndarray]
         List of 2D arrays representing offline data
     online_2d : List[np.ndarray]
         List of 2D arrays representing online data (must be same length as offline_2d)
+    add_comparison_array : bool, optional
+        Whether to append a third panel (online - offline) to each axes
+    ncol : int, optional
+        Number of columns of pairs in the figure grid
     axes : np.ndarray, optional
-        Optional array of axes to plot on, shape (n_pairs,)
+        Optional array of axes to plot on, shape (n_rows, ncol) or flat (n_pairs,)
     figsize : tuple, optional
-        Figure size (default is calculated based on number of pairs)
+        Figure size. If None, computed from rows/cols.
     cmap : str, optional
-        Colormap for the plots
+        Colormap for the offline/online concatenated image
+    cmap_comparison : str, optional
+        Colormap for the comparison panel (diverging recommended)
     add_colorbar : bool, optional
-        Whether to add a colorbar (only when creating a new figure)
+        Add a colorbar for the offline/online normalization (only if we create the fig)
+    add_comparison_colorbar : bool, optional
+        Add a colorbar for the comparison normalization (shared across axes; only if we create the fig)
     gap_width : int, optional
-        Width of gap between offline and online images
-        
+        Pixel width of the vertical gap between adjacent panels
+
     Returns
     -------
     fig : matplotlib.figure.Figure
         The figure object
     axes : np.ndarray
-        Array of axes
+        Array of axes (shape (n_rows, ncol))
     """
     assert len(offline_2d) == len(online_2d), "Lists must have the same length"
     n_pairs = len(offline_2d)
-    
-    # Create figure and axes if not provided
+    assert n_pairs % ncol == 0, "Number of pairs must be divisible by ncol"
+    n_rows = n_pairs // ncol
+
+    # --- Precompute global signal bounds for comparison normalization ---
+    # (absolute max over all offline & online arrays in the figure)
+    mins = []
+    maxs = []
+    for off, on in zip(offline_2d, online_2d):
+        all_data_pair = np.asarray(np.concatenate([np.ravel(off), np.ravel(on)]))
+        if all_data_pair.size == 0 or not np.any(np.isfinite(all_data_pair)):
+            continue
+        mins.append(np.nanmin(all_data_pair))
+        maxs.append(np.nanmax(all_data_pair))
+    if len(mins) == 0:
+        # If everything is empty or non-finite, fall back to safe defaults
+        vmin_global, vmax_global = 0.0, 0.0
+    else:
+        vmin_global, vmax_global = float(np.nanmin(mins)), float(np.nanmax(maxs))
+    abs_max_signal_global = max(abs(vmin_global), abs(vmax_global))
+    abs_max_signal_global = max(abs_max_signal_global, 1e-12)  # avoid degenerate range
+    comparison_norm_global = TwoSlopeNorm(vmin=-abs_max_signal_global,
+                                          vcenter=0.0,
+                                          vmax=abs_max_signal_global)
+
+    # --- Figure/axes handling ---
+    created_fig = False
     if axes is None:
         if figsize is None:
-            figsize = (8, 2 * n_pairs)
-        
-        fig, axes = plt.subplots(n_pairs, 1, figsize=figsize)
+            base_w = 5.0
+            base_h = 3.0
+            figsize = (base_w * ncol, base_h * n_rows)
+        fig, axes = plt.subplots(n_rows, ncol, figsize=figsize, squeeze=False)
         created_fig = True
-        if n_pairs == 1:
-            axes = np.array([axes])
     else:
-        fig = axes[0].figure if n_pairs > 1 else axes.figure
-        created_fig = False
-        if n_pairs == 1 and not isinstance(axes, np.ndarray):
-            axes = np.array([axes])
-    
-    # Get style colors
+        axes = np.asarray(axes)
+        if axes.ndim == 1 and axes.size == n_pairs:
+            axes = axes.reshape(n_rows, ncol)
+        elif axes.shape != (n_rows, ncol):
+            raise ValueError(f"`axes` must have shape {(n_rows, ncol)} or be flat of length {n_pairs}.")
+        fig = axes.ravel()[0].figure
+
+    # --- Style colors (using your styler palette) ---
     palette = styler.get_palette('online_offline')
     offline_color = palette['offline']
     online_color = palette['online']
-    
-    # Store the last imshow object for colorbar
-    last_im = None
-    
-    for i in range(n_pairs):
-        # 1) Joint normalize to [0,1]
-        offline_data = offline_2d[i]
-        online_data = online_2d[i]
-        
-        # Find global min and max across both datasets
-        all_data = np.concatenate([offline_data.flatten(), online_data.flatten()])
-        vmin = np.nanmin(all_data)
-        vmax = np.nanmax(all_data)
-        
-        # Normalize both datasets using same min/max
-        if vmax > vmin:
-            offline_norm = (offline_data - vmin) / (vmax - vmin)
-            online_norm = (online_data - vmin) / (vmax - vmin)
+    comparison_color = 'purple'  # Border for comparison
+
+    last_main_im = None  # for main colorbar (0..1 normalization)
+
+    # --- Plot ---
+    for idx in range(n_pairs):
+        r = idx // ncol
+        c = idx % ncol
+        ax = axes[r, c]
+
+        offline_data = np.asarray(offline_2d[idx])
+        online_data  = np.asarray(online_2d[idx])
+
+        if offline_data.shape != online_data.shape:
+            raise ValueError(f"Shape mismatch at pair {idx}: {offline_data.shape} vs {online_data.shape}")
+
+        # Per-pair joint normalization for the two main panels (0..1)
+        all_data_pair = np.concatenate([offline_data.ravel(order='C'),
+                                        online_data.ravel(order='C')])
+        vmin = np.nanmin(all_data_pair) if np.any(np.isfinite(all_data_pair)) else 0.0
+        vmax = np.nanmax(all_data_pair) if np.any(np.isfinite(all_data_pair)) else 0.0
+
+        if np.isfinite(vmin) and np.isfinite(vmax) and vmax > vmin:
+            scale = vmax - vmin
+            offline_norm = (offline_data - vmin) / scale
+            online_norm  = (online_data  - vmin) / scale
         else:
             offline_norm = np.zeros_like(offline_data)
-            online_norm = np.zeros_like(online_data)
-        
-        # 2) Create concatenated image with gap
+            online_norm  = np.zeros_like(online_data)
+
         h, w = offline_norm.shape
         gap = np.zeros((h, gap_width))
-        combined_img = np.concatenate([offline_norm, gap, online_norm], axis=1)
-        
-        # 3) Plot combined image
-        im = axes[i].imshow(combined_img, cmap=cmap, vmin=0, vmax=1)
-        last_im = im
-        
-        # 4) Add colored rectangle borders for each section
-        # Offline section
-        rect_off = plt.Rectangle((0-0.5, 0-0.5), w, h, 
-                          edgecolor=offline_color, facecolor='none', 
-                          linewidth=3)
-        axes[i].add_patch(rect_off)
-        
-        # Online section
-        rect_on = plt.Rectangle((w+gap_width-0.5, 0-0.5), w, h, 
-                         edgecolor=online_color, facecolor='none', 
-                         linewidth=3)
-        axes[i].add_patch(rect_on)
-        
-        # Remove axis ticks for cleaner visualization
-        axes[i].set_xticks([])
-        axes[i].set_yticks([])
-    
-    # Add a colorbar if we created a new figure
-    if created_fig and add_colorbar and last_im is not None:
-        fig.subplots_adjust(right=0.9)
-        cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
-        cbar = fig.colorbar(last_im, cax=cbar_ax)
-        cbar.set_label('Normalized Value')
-        plt.tight_layout(rect=[0, 0, 0.9, 0.95])
-    
+
+        # Build concatenated image: offline | gap | online | [gap | comparison]
+        borders = [
+            ("offline", (0, 0, w, h),     offline_color),
+            ("online",  (w + gap_width, 0, w, h), online_color),
+        ]
+
+        if add_comparison_array:
+            diff = online_data - offline_data  # raw values
+            comp_x0 = 2 * w + 2 * gap_width
+            borders.append(("comparison", (comp_x0, 0, w, h), comparison_color))
+
+            # Render main (left) chunk
+            left_img = np.concatenate([offline_norm, gap, online_norm], axis=1)
+            ax.imshow(left_img, cmap=cmap, vmin=0, vmax=1, origin='upper')
+            last_main_im = ax.images[-1]
+
+            # Render comparison with figure-wide symmetric norm
+            extent = (comp_x0 - 0.5, comp_x0 + w - 0.5, h - 0.5, -0.5)
+            ax.imshow(diff, cmap=cmap_comparison, norm=comparison_norm_global,
+                      extent=extent, origin='upper', aspect='equal')
+        else:
+            combined_img = np.concatenate([offline_norm, gap, online_norm], axis=1)
+            im = ax.imshow(combined_img, cmap=cmap, vmin=0, vmax=1, origin='upper')
+            last_main_im = im
+
+        # Borders
+        for _, (x0, y0, ww, hh), color in borders:
+            rect = plt.Rectangle((x0 - 0.5, y0 - 0.5), ww, hh,
+                                 edgecolor=color, facecolor='none', linewidth=3)
+            ax.add_patch(rect)
+
+        # Ticks & limits
+        ax.set_xticks([])
+        ax.set_yticks([])
+        right_edge = (3*w + 2*gap_width - 0.5) if add_comparison_array else (2*w + gap_width - 0.5)
+        ax.set_xlim(-0.5, right_edge)
+        ax.set_ylim(h - 0.5, -0.5)
+
+    # --- Colorbars (optional) ---
+    if created_fig and add_colorbar and (last_main_im is not None):
+        cbar = fig.colorbar(last_main_im, ax=axes.ravel().tolist(), fraction=0.025, pad=0.02)
+        cbar.set_label('Normalized Value (offline/online)')
+
+    if created_fig and add_comparison_array and add_comparison_colorbar:
+        # single shared comparison colorbar using the global comparison norm
+        sm = plt.cm.ScalarMappable(norm=comparison_norm_global, cmap=cmap_comparison)
+        cbar2 = fig.colorbar(sm, ax=axes.ravel().tolist(), fraction=0.025, pad=0.02)
+        cbar2.set_label('Online – Offline (normalized to abs(signal range))')
+
+    fig.tight_layout()
     return fig, axes
 
 
