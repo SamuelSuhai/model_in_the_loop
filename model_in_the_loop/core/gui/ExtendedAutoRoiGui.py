@@ -432,7 +432,7 @@ class ExtendedAutoRoiGui(RoiCanvasData):
                               got {take_roi_rgba_from_this_analysis}. Use wrapper.name here ")
             assert hasattr([wrapper for wrapper in all_dj_wrappers if wrapper.name == take_roi_rgba_from_this_analysis][0],"get_roi2rgb_and_alpha_255_map"),\
                 f"Wrapper {take_roi_rgba_from_this_analysis} does not have a method get_roi2rgb_and_alpha_255_map, which is required to take the roi color and alpha from this analysis."
-            self.take_roi_rgba_from_this_analysis = take_roi_rgba_from_this_analysis
+        self.take_roi_rgba_from_this_analysis = take_roi_rgba_from_this_analysis
 
 
 

@@ -34,7 +34,7 @@ paths:
   rgc_output_directory: datajoint/rgc_classifier 
   
   # folder were new data will be dumped
-  recording_files_dir: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/model_in_the_loop/data/new_data_dump #/gpfs01/euler/data/Data/Suhai/move_closed_loop_data_here # /gpfs01/euler/data/Data/Suhai/test_data_klaudia # 
+  recording_files_dir: /gpfs01/euler/data/Data/Suhai/test_data_klaudia  #/gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/model_in_the_loop/data/new_data_dump #/gpfs01/euler/data/Data/Suhai/move_closed_loop_data_here # # 
   
   # folder where new closed loop stimuli appear
   stimulus_output_dir: /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop

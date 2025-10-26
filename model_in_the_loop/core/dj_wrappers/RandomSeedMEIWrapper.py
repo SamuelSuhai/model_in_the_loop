@@ -254,11 +254,11 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
             print(f"ROI {roi_id} does not have an MEI. Select among the following: \n{list(self.roi2readout_idx_wmeis.keys())}")
             return
         
-        # sanity check field_key should be in CascadeSpikes 
-        restricted_spikes = (self.dj_table_holder("CascadeSpikes")() & field_key & {'roi_id': roi_id})
-        if len(restricted_spikes) == 0:
-            raise ValueError (f"No spikes found in CascadeSpikes for roi_id {roi_id} and given field_key {field_key}. \
-                              Please run check_requirements first.")
+        # # sanity check field_key should be in CascadeSpikes 
+        # restricted_spikes = (self.dj_table_holder("CascadeSpikes")() & field_key & {'roi_id': roi_id})
+        # if len(restricted_spikes) == 0:
+        #     raise ValueError (f"No spikes found in CascadeSpikes for roi_id {roi_id} and given field_key {field_key}. \
+        #                       Please run check_requirements first.")
 
         
         # find neuron_id for roi_id
@@ -537,7 +537,7 @@ class RandomSeedMEIWrapper(DJComputeWrapper):
 
         # load full model
         full_model_path = os.path.join(load_dir, "model_full.pt")
-        self.model = torch.load(full_model_path)
+        self.model = torch.load(full_model_path,weights_only=False)
         self.model.eval()
         print(f"Loaded full model from {full_model_path}")
 

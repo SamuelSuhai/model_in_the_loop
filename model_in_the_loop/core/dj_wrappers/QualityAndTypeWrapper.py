@@ -159,7 +159,11 @@ class QualityAndTypeWrapper(DJComputeWrapper):
         if verbose:
             print(f"Found {n_rois_after} rois passing the criterion out of {n_rois_before} rois.\
                 ({d_qi_min=}, chrip {qidx_min=}, {celltypes=}, {classifier_confidence=})")
-            return passing_roi_ids
+        
+        # turn int 
+        passing_roi_ids =list(map(int,passing_roi_ids))
+
+        return passing_roi_ids
     
     def text1(self,roi_id: int, field_key = {}, ) -> str:
         """

@@ -680,12 +680,13 @@ def average_df_over_colvalues(
     )
     return average_df
 
+
+
 def get_mean_snippet_df(field_key,
                         roi_id,
                         bsl_correction_method = "first",
                         stim_name ='circle',
                         cond2_value=None,
-                        keep_and_agg_more_cols = [],
                         drop_first_presentation=True,
                         verbose=True):
     rois_snippets_df = fetch_rois_snippets_df(field_key,
