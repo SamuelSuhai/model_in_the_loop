@@ -322,6 +322,10 @@ def plot_ordered_snippets(snippet_trace_list,
 
         # increment time
         t0 += single_snippet_time_vec[-1] + time_buffer_between_snippets
+    
+    # set xlim
+    tmax = t0 - time_buffer_between_snippets
+    ax.set_xlim(0, tmax)
 
     for spine_name in ["top", "right"]:
         ax.spines[spine_name].set_visible(False)

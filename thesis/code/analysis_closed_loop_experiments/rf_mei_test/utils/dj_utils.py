@@ -1078,6 +1078,7 @@ def wrapper_plot_one_roi_ordered_snippets(
                           single_snippet_dt = single_snippet_dt,
                           time_buffer_between_snippets = time_buffer_between_snippets,
                           x_tick_lables = x_tick_lables,
+                          x_ticks_kwargs = {"rotation":45},
                           plot_kwargs = plot_kwargs,show_legend =show_legend,ax = ax)
     
 def wrapper_plot_one_roi_successive_snippets(
