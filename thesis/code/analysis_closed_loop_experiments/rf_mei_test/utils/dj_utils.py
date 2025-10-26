@@ -3,7 +3,7 @@ from collections.abc import Iterable
 from numbers import Integral
 from thesis.code.analysis_closed_loop_experiments.rf_mei_test.rf_mei_test_schema import *
 from thesis.code.analysis_closed_loop_experiments.rf_mei_test.rf_mei_test_tables import CIRCLE_TYPES
-from thesis.code.analysis_closed_loop_experiments.rf_mei_test.utils.plot_utils import (add_mulitgroup_proxy_legend,plot_mulit_group_scatter_fits,plot_ordered_snippets,get_celltype_alpha_cmap)
+import thesis.code.analysis_closed_loop_experiments.rf_mei_test.utils.plot_utils as pu
 
 
 from thesis.code.plot.style import get_palette
@@ -14,7 +14,6 @@ import seaborn as sns
 import numpy as np
 import pandas as pd
 
-from djimaging.utils.plot_utils import plot_trace_and_trigger
 
 from warnings import simplefilter
 simplefilter(action='ignore', category=FutureWarning)
@@ -393,27 +392,6 @@ def get_field_roi_cond2_key(offline2online_roi_id_table,field_key,roi_id,con2_va
     key["cond2"] = con2_value
     return key
 
-def plot_trace_trigger_triggerinfo(trace_times,trace,triggertimes,triggeridx2hilightalpha: List[float],ax,triggeridx2txt= None,):
-    """
-    plots traces and triggers. Highlighted by triggeridx2hilightalpha (). 
-    if triggeridx2txt is given, it will also add text to the highlighted triggers.
-    """
-
-    plot_trace_and_trigger(
-        trace_times,
-        trace,
-        triggertimes,
-        ax = ax
-    )
-    # add highlights
-    if triggeridx2hilightalpha is not None:
-        for triggeridx, alpha in enumerate(triggeridx2hilightalpha):
-            if alpha > 0 and triggeridx < len(triggertimes)-1:
-                ax.axvspan(triggertimes[triggeridx], triggertimes[triggeridx +1], color='yellow', alpha=alpha)
-            if triggeridx2txt is not None:
-                ax.text(triggertimes[triggeridx], np.max(trace), triggeridx2txt[triggeridx], color='blue', fontsize=4,clip_on=True)
-
-    return ax
 
 def get_trigger2rf_center_dist(triggeridx2positions,roi_position):
     triggeridx2rf_center_dist = np.linalg.norm(np.array([triggeridx2positions]).squeeze() - roi_position,axis = 1)
@@ -428,27 +406,15 @@ def get_roi_position(triggeridx2positions,triggeridx2online_roi_id,true_online_r
 
 
 
-
-
-
-def fetch_and_plot_trace_trigger_triggerinfo_for_all_rois(preprocess_traces_table,
-                                                          presentation_table,
-                                                          stimulus_presentation_info_table,
-                                                          offline2online_roi_id_table,
-                                                          field_key,
-                                                          cond2_restriction = {},
-                                                          ax = None,
-                                                          stim_type = None):
-    pass
-
-
 def fetch_and_plot_trace_trigger_triggerinfo(preprocess_traces_table,
                                              presentation_table,
                                              stimulus_presentation_info_table,
                                              offline2online_roi_id_table, 
                                              key,
                                              ax = None,
-                                             stim_type = None):
+                                             stim_type = None,
+                                             add_dist_text = True,
+                                             ):
 
 
 
@@ -465,8 +431,10 @@ def fetch_and_plot_trace_trigger_triggerinfo(preprocess_traces_table,
     
     triggeridx2rf_center_dist = get_trigger2rf_center_dist(triggeridx2positions,roi_position)
     triggeridx2hilightalpha =  triggeridx2rf_center_dist / np.max(triggeridx2rf_center_dist)
-    triggeridx2txt = [str(pos) +"\ndist:" + str(int(dist)) for pos,dist in zip(triggeridx2positions,triggeridx2rf_center_dist)]
-    
+    if  add_dist_text:
+        triggeridx2txt = [str(pos) +"\ndist:" + str(int(dist)) for pos,dist in zip(triggeridx2positions,triggeridx2rf_center_dist)]
+    else:
+        triggeridx2txt = None
     
     
     if ax is None:
@@ -482,7 +450,12 @@ def fetch_and_plot_trace_trigger_triggerinfo(preprocess_traces_table,
 
         # filter
     
-    ax = plot_trace_trigger_triggerinfo(pp_trace_times,pp_trace,triggertimes,triggeridx2hilightalpha,ax,triggeridx2txt)
+    ax = pu.plot_trace_trigger_triggerinfo(pp_trace_times,
+                                        pp_trace,
+                                        triggertimes,
+                                        triggeridx2hilightalpha,
+                                        ax,
+                                        triggeridx2txt)
     
     # set legend lower right
     ax.legend(loc='lower right')
@@ -490,9 +463,7 @@ def fetch_and_plot_trace_trigger_triggerinfo(preprocess_traces_table,
     ax.set_xlabel("Time [s]")
     ax.set_ylabel("Fluorescence [a.u.]")
     ax.set_title(f"Roi Id {key['roi_id']} circle type {stim_type}")
-    
 
-    
     return ax
 
 
@@ -520,6 +491,90 @@ def wrapper_fetch_and_plot_trace_trigger_triggerinfo_all_rois(
                 stim_type=stim_type,
                 ax = ax[i,i_circle],
             )
+
+def set_xaxis_lim_to_stim_type_interval(ax: plt.Axes,
+                               triggeridx2stim_type: List[str],
+                               triggertimes: np.ndarray,
+                               stim_type,
+                               pad_left = 0.1,
+                               pad_ritht = 0.1) -> plt.Axes:
+    elypse_triggeridx = [i for i, t in enumerate(triggeridx2stim_type) if t == stim_type]
+    first_trigger = triggertimes[elypse_triggeridx[0]]
+    last_trigger = triggertimes[elypse_triggeridx[-1]]
+    ax.set_xlim(first_trigger - pad_left, last_trigger + pad_ritht)
+    return ax
+
+
+
+def plot_single_roi_trace_trigger_bg_stim(
+        offline2online_roi_id_table,
+        pp_trace_table,
+        presentation_table,
+        stimulus_presentation_info_table,
+        field_cond2_key,
+        stim_type,
+        roi_id,
+        stim_onset_delay=0.95,
+        ax = None,):
+    """
+    For one roi:
+    - fetch trace, trigger times, trigger info
+    - plot trace with background and stimulus periods highlighted
+    """
+
+    if ax is None:
+        fig, ax = plt.subplots()
+
+
+    key = {** field_cond2_key,"roi_id": roi_id}
+    pp_trace_times,pp_trace,triggertimes,\
+    (triggeridx2positions,triggeridx2online_roi_id,triggeridx2stim_type),\
+        true_online_roi_id = fetch_trace_trigger_triggerinfo(pp_trace_table,
+                                                        presentation_table,
+                                                        stimulus_presentation_info_table,
+                                                        offline2online_roi_id_table,
+                                                        key)
+    
+    # get stimulus onset times 
+    stim_onset_times = triggertimes + stim_onset_delay
+
+
+    # restrict x axiis to elypse type
+    assert stim_type in CIRCLE_TYPES, f"stim_type {stim_type} not in {CIRCLE_TYPES}"
+    ax = set_xaxis_lim_to_stim_type_interval(
+        ax,
+        triggeridx2stim_type,
+        triggertimes,
+        stim_type,
+        pad_left = 0.15,
+        pad_ritht = -0.1,
+    )
+
+    
+    ax = pu.plot_trace_trigger_bg_stim(trace_times = pp_trace_times,
+                                        trace= pp_trace,
+                                        triggertimes = triggertimes,
+                                        stim_onset_times= stim_onset_times,
+                                        ax = ax,
+                                        bg_color='gray',
+                                        stim_color='yellow',
+                                        bg_kwargs={"alpha":0.3},
+                                        stim_kwargs={"alpha":0.3}
+                                        )
+    
+    # remove spines
+    sns.despine(ax=ax)
+
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel("Fluorescence [a.u.]")
+
+    
+    # legend
+    ax = pu.add_trigger_bg_stim_legend(ax)
+
+
+    return ax
+
 
 
 def fetch_rois_snippets_df(field_key,
@@ -881,15 +936,15 @@ def wrapper_scatter_response_distance_celltype(
     else:
         ylabel = measure
 
-    celltypes = np.unique(full_df["celltype"])
+    celltypes = list(map(int,np.unique(full_df["celltype"])))
 
     if plot_kwargs.get("use_celltype_cmap",False) is True:
-        color_map = get_celltype_alpha_cmap(celltypes=celltypes)
+        color_map = pu.get_celltype_alpha_cmap(celltypes=celltypes)
     else:
         palette = sns.color_palette("tab10", n_colors=len(celltypes))
         color_map = {celltype: palette[i] for i,celltype in enumerate(celltypes)}
     
-    ax = plot_mulit_group_scatter_fits(full_df=full_df,
+    ax = pu.plot_mulit_group_scatter_fits(full_df=full_df,
                                        x = "distance",
                                         y=measure,
                                         ax=ax,
@@ -963,7 +1018,7 @@ def wrapper_scatter_response_distance(
 
     palette = sns.color_palette("tab20", n_colors=len(roi_id_list))
     color_map = {roi_id: palette[i] for i,roi_id in enumerate(roi_id_list)}
-    ax = plot_mulit_group_scatter_fits(full_df=full_df,
+    ax = pu.plot_mulit_group_scatter_fits(full_df=full_df,
                                     x = "distance",
                                     y=measure,
 
@@ -982,17 +1037,21 @@ def wrapper_scatter_response_distance(
     return ax
 
 
+
 def wrapper_plot_one_roi_ordered_snippets(
         field_key,
         roi_id,
         bsl_correction_method = "first",
         stim_name = "off_big",
         plot_kwargs = {},
+        snippet_vline = True,
         time_buffer_between_snippets = 0,
         show_legend=False,
+        highlight_bg_times = (0,0.95),
+        highlighted_stim_times = (0.95,2),
         ax = None,
         cond2_value = None,
-    ):
+    ):  
 
 
     # fetch and process df
@@ -1006,10 +1065,16 @@ def wrapper_plot_one_roi_ordered_snippets(
 
     # get distance related x tick labels
     x_tick_lables = list(map(lambda dist: f"{dist:.0f}",snippet_presentation_distances))
-     
+
+
 
     # plot snippets by distance             
-    plot_ordered_snippets(snippet_trace_list = snippet_trace_list,
+    pu.plot_ordered_snippets(snippet_trace_list = snippet_trace_list,
+                             highlight_bg_times = highlight_bg_times,
+                             highlight_bg_patch_kwargs = {"alpha":0.3},
+                             highlight_stim_times = highlighted_stim_times,
+                                highlight_stim_patch_kwargs = {"alpha":0.3},
+                                snippet_vline = snippet_vline,
                           single_snippet_dt = single_snippet_dt,
                           time_buffer_between_snippets = time_buffer_between_snippets,
                           x_tick_lables = x_tick_lables,
@@ -1050,7 +1115,7 @@ def wrapper_plot_one_roi_successive_snippets(
     x_tick_lables = sub_df["stimulus_type"].to_list()
 
     # plot them
-    plot_ordered_snippets(snippet_trace_list,
+    pu.plot_ordered_snippets(snippet_trace_list,
                           single_snippet_dt,
                             time_buffer_between_snippets = time_buffer_between_snippets,
                             x_tick_lables = x_tick_lables,

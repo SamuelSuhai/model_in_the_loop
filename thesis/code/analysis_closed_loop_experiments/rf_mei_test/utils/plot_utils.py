@@ -6,6 +6,7 @@ from typing import List, Optional, Dict, Any, Tuple,Iterable
 import matplotlib.lines as mlines
 import thesis.code.plot.style as styler
 from collections import Counter
+from djimaging.utils.plot_utils import plot_trace_and_trigger
 
 
 
@@ -98,6 +99,72 @@ def add_mulitgroup_proxy_legend(ax: plt.Axes,
     return ax
 
 
+def plot_trace_trigger_triggerinfo(trace_times,
+                                   trace,
+                                   triggertimes,
+                                   triggeridx2hilightalpha: List[float],
+                                   ax,
+                                   triggeridx2txt= None,):
+    """
+    plots traces and triggers. Highlighted by triggeridx2hilightalpha (). 
+    if triggeridx2txt is given, it will also add text to the highlighted triggers.
+    """
+
+    plot_trace_and_trigger(
+        trace_times,
+        trace,
+        triggertimes,
+        ax = ax
+    )
+    # add highlights
+    if triggeridx2hilightalpha is not None:
+        for triggeridx, alpha in enumerate(triggeridx2hilightalpha):
+            if alpha > 0 and triggeridx < len(triggertimes)-1:
+                ax.axvspan(triggertimes[triggeridx], triggertimes[triggeridx +1], color='yellow', alpha=alpha)
+            if triggeridx2txt is not None:
+                ax.text(triggertimes[triggeridx], np.max(trace), triggeridx2txt[triggeridx], color='blue', fontsize=4,clip_on=True)
+
+    return ax
+
+
+def plot_trace_trigger_bg_stim(trace_times: np.ndarray,
+                                trace: np.ndarray,
+                                triggertimes: np.ndarray,
+                                stim_onset_times: np.ndarray,
+                                ax,
+                                bg_color='gray',
+                                stim_color='yellow',
+                                bg_kwargs={},
+                                stim_kwargs={}
+    ):
+    """
+    Plots trace and triggers, highlighting background and stimulus periods.
+    Assumes the order of the stimulus is trigger, then background, then stimulus.
+    """
+    assert len(triggertimes) == len(stim_onset_times), "triggertimes and stim_onset_times must be of same length"
+
+
+    plot_trace_and_trigger(
+        trace_times,
+        trace,
+        triggertimes,
+        ax = ax
+    )
+
+    # add vspans for bg and stim
+    for i, trigger_time in enumerate(triggertimes):
+        stim_onset_time = stim_onset_times[i]
+        # background period
+        ax.axvspan(trigger_time, stim_onset_time, color=bg_color, **bg_kwargs)
+        # stimulus period
+        if i < len(triggertimes) - 1:
+            next_trigger_time = triggertimes[i + 1]
+            ax.axvspan(stim_onset_time, next_trigger_time, color=stim_color, **stim_kwargs)
+    return ax
+    
+
+
+
 def plot_mulit_group_scatter_fits(full_df: pd.DataFrame,
                                     x: str,
                                   y: str,
@@ -177,42 +244,84 @@ def plot_mulit_group_scatter_fits(full_df: pd.DataFrame,
 
     return ax
 
+def add_trigger_bg_stim_legend(ax: plt.Axes) -> plt.Axes:
+    # remove legend and add own with proxy artists
+    ax.legend().remove()
+
+    # add patch for background and stimulus and red line for trigger
+
+    from matplotlib.patches import Patch
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Patch(facecolor='gray', edgecolor='gray', alpha=0.3, label='Background period'),
+        Patch(facecolor='yellow', edgecolor='yellow', alpha=0.3, label='Stimulus period'),
+        Line2D([0], [0], color='red', lw=2, label='Trigger')
+    ]
+    ax.legend(handles=legend_elements, loc='center',bbox_to_anchor=(0.5, 1.1),ncol=3)
+    return ax
+
+
+
 def plot_ordered_snippets(snippet_trace_list,
                             single_snippet_dt,
+                            highlight_bg_times: Tuple[float,float] = [],
+                            highlight_bg_patch_kwargs: Dict[str,Any] = {},
+                            highlight_stim_times: Tuple[float,float] = [],
+                            highlight_stim_patch_kwargs: Dict[str,Any] = {},
+                            snippet_vline = False,
                             time_buffer_between_snippets = 0,
                             ax =None,
                             plot_kwargs = {},
-                            stim_onset_patch_kwargs = {},
                             x_tick_lables = None,
                             x_ticks_kwargs = {},
                             show_legend=False):
     """
     Can be used to plot snippets in snippet_trace_list,
+    highilight_bg_times: start stop time relative to snippet start
+    highilight_stim_times: start stop time relative to snippet start
     """
-
+   
     if ax is None:
         fig, ax = plt.subplots()
     single_snippet_time_vec = np.arange(len(snippet_trace_list[0])) * single_snippet_dt
+    
+
+    # for vline
+    concatenated_traces = np.concatenate(snippet_trace_list)
+    vmin = np.nanmin(concatenated_traces)
+    vmax = np.nanmax(concatenated_traces)
+    vrng = vmax - vmin
+
     t0 = 0
     x_tick_vals = []
     for i, snippet in enumerate(snippet_trace_list):
         time_axis = single_snippet_time_vec + t0
 
-        ax.plot(time_axis, snippet,color = plot_kwargs.get("color","blue"))
+        ax.plot(time_axis, snippet, **plot_kwargs)
         
 
         # add x tick at center of snippet
         x_tick_vals.append(t0 + single_snippet_time_vec[len(single_snippet_time_vec)//2])
 
-        # add patch from half snippet to end
-        stim_onset_patch_start = t0 + single_snippet_time_vec[len(single_snippet_time_vec)//2]
-        stim_onset_patch_end = t0 + single_snippet_time_vec[-1]
-        ax.axvspan(stim_onset_patch_start, stim_onset_patch_end,
-                    color=stim_onset_patch_kwargs.get("color","yellow"), 
-                    alpha=stim_onset_patch_kwargs.get("alpha",0.3),
-                    )
+        # add highlighted bg period
+        if highlight_bg_times:
+            ax.axvspan(t0 + highlight_bg_times[0],
+                       t0 + highlight_bg_times[1],
+                       color='gray',
+                       **highlight_bg_patch_kwargs)
+        # add highlighted stim period
+        if highlight_stim_times:
+            ax.axvspan(t0 + highlight_stim_times[0],
+                       t0 + highlight_stim_times[1],
+                       color='yellow',
+                       **highlight_stim_patch_kwargs)
+        if snippet_vline:
 
-        t0 = time_axis[-1] + time_buffer_between_snippets
+            ax.vlines(t0, vmin - 0.22 * vrng, vmin - 0.02 * vrng, color='r', label='trigger', zorder=-2)
+        
+
+        # increment time
+        t0 += single_snippet_time_vec[-1] + time_buffer_between_snippets
 
     for spine_name in ["top", "right"]:
         ax.spines[spine_name].set_visible(False)
@@ -228,16 +337,10 @@ def plot_ordered_snippets(snippet_trace_list,
     ax.set_ylabel('Fluorescence [a.u.]')
     
     if show_legend:
-        axvspan_label=stim_onset_patch_kwargs.get("label","Stimulus presentation")
+        ax = add_trigger_bg_stim_legend(ax)
+    return ax
 
-        # add proxy artists
-        from matplotlib.patches import Patch
-        proxy_lines = [Patch(facecolor=stim_onset_patch_kwargs.get("color","yellow"), alpha=stim_onset_patch_kwargs.get("alpha",0.3), label=axvspan_label)]
-        ax.legend(handles=proxy_lines,
-                  frameon=False, 
-                bbox_to_anchor=(1.0, 1.15),  # (x, y) position relative to the plot
 
-                  loc='upper right')
 
 def get_celltype_alpha_cmap(celltypes: List[int]) -> Dict[int,np.ndarray]:
     """
