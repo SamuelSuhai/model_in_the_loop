@@ -570,7 +570,8 @@ def plot_confusion_matrix(matrix,
     
     # Plot the matrix
     sns.heatmap(matrix, annot=True, fmt=fmt, cmap=cmap, 
-                ax=ax, cbar_kws={'label': label, **cbar_kws},**heatmap_kws)
+                ax=ax, 
+                cbar_kws={'label': label, **cbar_kws},**heatmap_kws)
     
     # Update labels
     ax.set_xlabel('Online Cell Type')

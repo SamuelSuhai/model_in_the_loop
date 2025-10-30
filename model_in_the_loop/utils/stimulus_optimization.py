@@ -166,8 +166,8 @@ class DiverselyIncreaseObjective(AbstractObjective):
         non_diag_dists = pw_dists[non_diag_mask]
         min_pw_dist = torch.min(non_diag_dists)
 
-        total_score = increase_part - self.d_weight * min_pw_dist 
-
+        toal_loss = increase_part - self.d_weight * min_pw_dist 
+        total_score = - toal_loss
         return total_score
 
 

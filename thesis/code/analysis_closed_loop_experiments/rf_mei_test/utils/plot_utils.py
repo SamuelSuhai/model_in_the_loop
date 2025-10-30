@@ -93,7 +93,7 @@ def add_mulitgroup_proxy_legend(ax: plt.Axes,
                        proxy_single_reg],
             frameon=legend_kwargs.get("frameon",False),
             bbox_to_anchor=legend_kwargs.get("bbox_to_anchor",(1.0, 1.0)),
-            loc=legend_kwargs.get("loc",'upper right')
+            loc=legend_kwargs.get("loc",'upper right'),
             **legend_kwargs)
 
     return ax
@@ -237,7 +237,7 @@ def plot_mulit_group_scatter_fits(full_df: pd.DataFrame,
     ax.set_ylabel(ylabel)
 
     if show_legend:
-        ax.legend(title=legend_title, loc='upper right')
+        ax.legend(title=legend_title, loc='upper right',ncol=2)
     else:
         ax.legend_.remove()
 
@@ -260,10 +260,29 @@ def add_trigger_bg_stim_legend(ax: plt.Axes) -> plt.Axes:
     ax.legend(handles=legend_elements, loc='center',bbox_to_anchor=(0.5, 1.1),ncol=3)
     return ax
 
+def plot_sparse_snippets(snippet_trace_list,
+                         single_snippet_dt,
+                         snippet_t0s: List[float],
+                         ax =None,
+                         plot_kwargs = {},):
+    """
+    Can be used to plot snippets in snippet_trace_list,
+    snippet_t0s: list of start times for each snippet
+    """
+    if ax is None:
+        fig, ax = plt.subplots()
+    # create time ves
+    single_snippet_time_vec = np.arange(len(snippet_trace_list[0])) * single_snippet_dt
+
+    for i, snippet in enumerate(snippet_trace_list):
+        time_axis = single_snippet_time_vec + snippet_t0s[i]
+        ax.plot(time_axis, snippet, **plot_kwargs)
+    return ax
 
 
 def plot_ordered_snippets(snippet_trace_list,
                             single_snippet_dt,
+                            single_snippet_time_shift: float= 0,
                             highlight_bg_times: Tuple[float,float] = [],
                             highlight_bg_patch_kwargs: Dict[str,Any] = {},
                             highlight_stim_times: Tuple[float,float] = [],
@@ -283,8 +302,10 @@ def plot_ordered_snippets(snippet_trace_list,
    
     if ax is None:
         fig, ax = plt.subplots()
-    single_snippet_time_vec = np.arange(len(snippet_trace_list[0])) * single_snippet_dt
     
+    # create time ves
+    single_snippet_time_vec = np.arange(len(snippet_trace_list[0])) * single_snippet_dt
+
 
     # for vline
     concatenated_traces = np.concatenate(snippet_trace_list)
@@ -295,7 +316,7 @@ def plot_ordered_snippets(snippet_trace_list,
     t0 = 0
     x_tick_vals = []
     for i, snippet in enumerate(snippet_trace_list):
-        time_axis = single_snippet_time_vec + t0
+        time_axis = single_snippet_time_vec + t0 + single_snippet_time_shift
 
         ax.plot(time_axis, snippet, **plot_kwargs)
         
@@ -321,7 +342,7 @@ def plot_ordered_snippets(snippet_trace_list,
         
 
         # increment time
-        t0 += single_snippet_time_vec[-1] + time_buffer_between_snippets
+        t0 = time_axis[-1] + time_buffer_between_snippets
     
     # set xlim
     tmax = t0 - time_buffer_between_snippets
@@ -330,12 +351,10 @@ def plot_ordered_snippets(snippet_trace_list,
     for spine_name in ["top", "right"]:
         ax.spines[spine_name].set_visible(False)
 
-    # add x ticks with distance labels
-    ax.set_xticks(x_tick_vals)
+    # add x ticks with  labels
     if x_tick_lables is not None:
+        ax.set_xticks(x_tick_vals)
         ax.set_xticklabels(x_tick_lables, **x_ticks_kwargs)
-    else:
-        ax.set_xticklabels([ i for i in range(len(snippet_trace_list))])    
 
     ax.set_xlabel('Distance to RF center [μm]')
     ax.set_ylabel('Fluorescence [a.u.]')
@@ -344,6 +363,57 @@ def plot_ordered_snippets(snippet_trace_list,
         ax = add_trigger_bg_stim_legend(ax)
     return ax
 
+
+def plot_snippets_subplots(snippet_trace_list1: List[np.ndarray],
+                            snippets_trace_list2: List[np.ndarray],
+                            times: np.ndarray,
+                            axes: Optional[np.ndarray[plt.Axes]] = None,
+                            text1: str ="",
+                            text2: str ="",
+    ) -> Tuple[ np.ndarray]:
+    """
+    Plots two lists of snippets in two axes, index determines color from tab 10.
+    texts are added to the top left of each subplot.
+    
+    Args:
+        snippet_trace_list1: List of numpy arrays containing first set of snippets
+        snippets_trace_list2: List of numpy arrays containing second set of snippets
+        times: Time points for x-axis
+        axes: Optional array of two matplotlib axes for plotting
+        text1: Text to add to first subplot
+        text2: Text to add to second subplot
+    
+    Returns:
+        tuple: (fig, axes) - figure and axes array containing the plots
+    """
+    if axes is None:
+        fig, axes = plt.subplots(2, 1, sharex=True)
+    
+    # Get color palette
+    colors = sns.color_palette("tab10", n_colors=max(len(snippet_trace_list1), len(snippets_trace_list2)))
+    
+    # Plot first set of snippets
+    for i, snippet in enumerate(snippet_trace_list1):
+        axes[0].plot(times, snippet, color=colors[i])
+    axes[0].text(0.02, 0.98, text1, 
+                 transform=axes[0].transAxes,
+                 verticalalignment='top',
+                 horizontalalignment='left')
+    
+    # Plot second set of snippets
+    for i, snippet in enumerate(snippets_trace_list2):
+        axes[1].plot(times, snippet, color=colors[i])
+    axes[1].text(0.02, 0.98, text2,
+                 transform=axes[1].transAxes,
+                 verticalalignment='top',
+                 horizontalalignment='left')
+    
+    # Remove top and right spines
+    for ax in axes:
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+    
+    return  axes
 
 
 def get_celltype_alpha_cmap(celltypes: List[int]) -> Dict[int,np.ndarray]:

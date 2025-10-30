@@ -158,15 +158,19 @@ def bootstrap_curve_ci(
 
 
 
-def bootstrap(full_df: pd.DataFrame) ->pd.DataFrame:
+def bootstrap(full_df: pd.DataFrame,
+              x_col: str = "distance",
+              y_col: str = "response_mean",
+              identity_col: str = "celltype",
+              ) ->pd.DataFrame:
     
     out = []
-    for celltype in np.unique(full_df["celltype"]):
+    for identity_value in np.unique(full_df[identity_col]):
 
-        print(f"analyzing for type {celltype}")
+        print(f"analyzing for type {identity_value}")
 
-        sub_df = full_df[full_df["celltype"] == celltype]
-        x,y =_extract_x_y(sub_df,x_col= "distance",y_col = "response_mean")
+        sub_df = full_df[full_df[identity_col] == identity_value]
+        x,y =_extract_x_y(sub_df,x_col= x_col,y_col = y_col)
 
         ci_vals = bootstrap_parameters_ci(
             x=x,
@@ -176,7 +180,7 @@ def bootstrap(full_df: pd.DataFrame) ->pd.DataFrame:
         for poly_power in range(ci_vals.shape[1]):
             out.append(
                 {
-                    "celltype":celltype,
+                    f"{identity_col}":identity_value,
                     "low": ci_vals[0,poly_power],
                     "high": ci_vals[1,poly_power],
                     "poly_power":poly_power

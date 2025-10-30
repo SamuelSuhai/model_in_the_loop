@@ -660,24 +660,32 @@ def fetch_all_fields_with_stm(stim_name):
 
 def average_df_over_colvalues(
         df: pd.DataFrame,
-        cols_to_keep: List[str],
+        cols_to_gb: List[str],
         cols_to_average: List[str],
+        verbose = True,
     ) -> pd.DataFrame:
     """
-    For each unique combination of values in cols_to_keep, average the values in cols_to_average"""
+    For each unique combination of values in cols_to_gb, average the values in cols_to_average"""
 
     # groupby all columns except cols_to_average_over and cols_to_average
     
-    print(f"Grouping by columns: {cols_to_keep}, reducing df cols over {set(df.columns) - set(cols_to_keep)}")
-    for c in cols_to_keep:
+    print(f"Grouping by columns: {cols_to_gb}, reducing df cols over {set(df.columns) - set(cols_to_gb)}")
+    for c in cols_to_gb:
         assert not isinstance(df[c].iloc[0], np.ndarray), f"Column {c} is not suitable for grouping, contains ndarray."
 
-    grouped_df = df.groupby(cols_to_keep,as_index=False)
+    grouped_df = df.groupby(cols_to_gb,as_index=False)
+    
+    if verbose:
+        print(f"Number of unique groups: {len(grouped_df)}")
+    
     agg_func = lambda x: np.mean(np.stack(x.to_list()),axis=0)
 
     average_df = grouped_df[cols_to_average].agg(
         func = agg_func
     )
+
+    if verbose:
+        print(f"Averaged df over columns: {cols_to_average}, resulting df has {len(average_df)} rows. Differece in rows: {len(df) - len(average_df)}")
     return average_df
 
 
