@@ -824,12 +824,18 @@ def plot_ballpark_quality_contingency(quality_pivot,
     
     return fig,ax
 
-def plot_quality_scatter(quality_pivot,subplot_kws = {}, scatter_kws = {}):
+def plot_quality_scatter(quality_pivot,
+                         subplot_kws = {}, 
+                         scatter_kws = {},
+                         summary_stats = True,)-> Tuple[plt.Figure, plt.Axes]:
  
     fig,ax = plt.subplots(**subplot_kws)
     xs = quality_pivot['cl']
     ys = quality_pivot['n1']
 
+    if summary_stats:
+        print(f"Correlation between online and offline quality: {xs.corr(ys):.3f}")
+        
     
     scatter = ax.scatter(xs, ys, alpha=0.7,  **scatter_kws)  
 

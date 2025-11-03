@@ -1064,7 +1064,10 @@ def wrapper_plot_one_roi_ordered_snippets(
 
 
     # fetch and process df
-    mean_df,snippet_col_name = get_mean_snippet_df(field_key,roi_id,bsl_correction_method=bsl_correction_method,cond2_value=cond2_value)
+    mean_df,snippet_col_name = get_mean_snippet_df(field_key,
+                                                   roi_id,
+                                                   bsl_correction_method=bsl_correction_method,
+                                                   cond2_value=cond2_value)
 
 
     snippet_trace_list,single_snippet_dt ,\
@@ -1081,15 +1084,15 @@ def wrapper_plot_one_roi_ordered_snippets(
     pu.plot_ordered_snippets(snippet_trace_list = snippet_trace_list,
                              highlight_bg_times = highlight_bg_times,
                              highlight_bg_patch_kwargs = {"alpha":0.3},
-                             highlight_stim_times = highlighted_stim_times,
-                                highlight_stim_patch_kwargs = {"alpha":0.3},
-                                snippet_vline = snippet_vline,
-                          single_snippet_dt = single_snippet_dt,
-                          time_buffer_between_snippets = time_buffer_between_snippets,
-                          x_tick_lables = x_tick_lables,
-                          x_ticks_kwargs = {"rotation":45},
-                          plot_kwargs = plot_kwargs,show_legend =show_legend,ax = ax)
-    
+                            highlight_stim_times = highlighted_stim_times,
+                            highlight_stim_patch_kwargs = {"alpha":0.3},
+                            snippet_vline = snippet_vline,
+                            single_snippet_dt = single_snippet_dt,
+                            time_buffer_between_snippets = time_buffer_between_snippets,
+                            x_tick_lables = x_tick_lables,
+                            x_ticks_kwargs = {"rotation":45},
+                            plot_kwargs = plot_kwargs,show_legend =show_legend,ax = ax)
+        
 def wrapper_plot_one_roi_successive_snippets(
             field_key,
             roi_id,
