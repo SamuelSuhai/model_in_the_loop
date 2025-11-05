@@ -23,6 +23,30 @@ def make_plot_df(df, only_order_n=None):
     return df
 
 
+
+def plot_points_and_ci(df,column,
+                       ax,
+                       dodge=0.3,
+                       colors = sns.color_palette("tab10")):
+
+    
+    colvals = df[column].unique()
+
+    offsets = np.linspace(-dodge/2, dodge/2, len(colvals))
+    for i,level in enumerate(colvals):
+        sub = df[df[column] == level]
+        x = i + offsets[i]
+        ax.errorbar([x], sub["mid"], yerr=[sub["err_low"], sub["err_high"]],
+                    fmt="o", color=colors[i % len(colors)], 
+                    capsize=3, )
+    ax.axhline(0, color='grey', linestyle='--', linewidth=0.3)
+    sns.despine(ax=ax)
+    return ax
+
+
+
+
+
 def plot_conf_intervals(df, ax=None, cmap_by = "celltype", legend_str=None, dodge=0.3,figsize =(4,4)):
     """Plot confidence intervals per celltype and poly_power."""
     if ax is None:
@@ -454,3 +478,164 @@ def get_celltype_alpha_cmap(celltypes: List[int]) -> Dict[int,np.ndarray]:
         color_map[celltype] = rgba
     
     return color_map
+
+
+def normalize_arrays(arrays: Iterable[np.ndarray],type:str = "single") -> List[np.ndarray]:
+    """
+    Normalizes the arrays in the list to 0..1 range. If type is "single", each array is normalized independently. if type is "joint", all arrays are normalized jointly.
+    """
+    if type == "single":
+        normalized_arrays = []
+        for array in arrays:
+            arr_min = np.nanmin(array)
+            arr_max = np.nanmax(array)
+            if np.isfinite(arr_min) and np.isfinite(arr_max) and arr_max > arr_min:
+                norm_array = (array - arr_min) / (arr_max - arr_min)
+            else:
+                norm_array = np.zeros_like(array)
+            normalized_arrays.append(norm_array)
+        return normalized_arrays
+    elif type == "joint":
+        all_data = np.concatenate([array.ravel(order='C') for array in arrays])
+        vmin = np.nanmin(all_data) if np.any(np.isfinite(all_data)) else 0.0
+        vmax = np.nanmax(all_data) if np.any(np.isfinite(all_data)) else 0.0
+
+        normalized_arrays = []
+        if np.isfinite(vmin) and np.isfinite(vmax) and vmax > vmin:
+            scale = vmax - vmin
+            for array in arrays:
+                norm_array = (array - vmin) / scale
+                normalized_arrays.append(norm_array)
+        else:
+            for array in arrays:
+                norm_array = np.zeros_like(array)
+                normalized_arrays.append(norm_array)
+        return normalized_arrays
+
+
+
+def plot_2d_array_comparison(
+        array1: List[np.ndarray],
+        array2: List[np.ndarray],
+        axes: np.ndarray[plt.Axes],
+        array_colors : Tuple[str, str],
+        cmap: str = "RdBu_r",
+        gap_width: int = 2,  # Width of gap between sections (in pixels)
+        norm_type: str | None = None,
+    ):
+    """
+
+    """
+    assert len(array1) == len(array2), "Lists must have the same length"
+    n_pairs = len(array1)
+    assert axes.shape == (n_pairs,)
+
+
+
+    # --- Plot ---
+    for idx in range(n_pairs):
+
+        ax = axes[idx]
+
+        array1_data = np.asarray(array1[idx])
+        array2_data  = np.asarray(array2[idx])
+
+        if array1_data.shape != array2_data.shape:
+            raise ValueError(f"Shape mismatch at pair {idx}: {array1_data.shape} vs {array2_data.shape}")
+
+        # normalize 
+        if norm_type:
+            assert norm_type in ["single","joint"], "norm_type must be 'single' or 'joint'"
+            array1_norm, array2_norm = normalize_arrays([array1_data, array2_data], type=norm_type)
+        else:
+            array1_norm = array1_data
+            array2_norm = array2_data
+        
+
+        h, w = array1_norm.shape
+        gap = np.zeros((h, gap_width))
+
+        # Build concatenated image: offline | gap | online | [gap | comparison]
+        borders = [
+            ("array1", (0, 0, w, h),     array_colors[0]),
+            ("array2",  (w + gap_width, 0, w, h), array_colors[1]),
+        ]
+
+
+        combined_img = np.concatenate([array1_norm, gap, array2_norm], axis=1)
+        im = ax.imshow(combined_img, cmap=cmap, vmin=0, vmax=1, origin='upper')
+        last_main_im = im
+
+        # Borders
+        for _, (x0, y0, ww, hh), color in borders:
+            rect = plt.Rectangle((x0 - 0.5, y0 - 0.5), ww, hh,
+                                 edgecolor=color, facecolor='none', linewidth=6)
+            ax.add_patch(rect)
+
+        # Ticks & limits
+        ax.set_xticks([])
+        ax.set_yticks([])
+        right_edge = (2*w + gap_width - 0.5)
+        ax.set_xlim(-0.5, right_edge)
+        ax.set_ylim(h - 0.5, -0.5)
+
+    return axes
+
+
+
+
+
+def plot_2time_series(time_series: np.ndarray,
+                     axes: np.ndarray[plt.Axes] | None = None,
+                     palette: Tuple[str, str] = ("green", "purple"),
+                     labels: Tuple[str,  str] = ("Green channel", "UV channel")
+                     ) -> tuple[plt.Figure, plt.Axes]:
+    """
+    Plots time series comparison in subplots.
+    
+    Args:
+        time_series: Array of shape (n_rois, 2, n_timepoints) containing pairs of time series
+        axes: Optional array of matplotlib axes to plot on. If None, new axes will be created
+        
+    Returns:
+        tuple: (fig, axes) containing the figure and axes array
+    """
+    
+    MODEL_FRAMERATE = 30  # fps
+    n_rois, n_series, n_timepoints = time_series.shape
+    assert n_series == 2, f"time_series must have shape (n_rois, 2, n_timepoints) but got {time_series.shape}"
+
+    # Create time vector
+    time = np.arange(n_timepoints) / MODEL_FRAMERATE  # in seconds
+
+    # Create subplots
+    if axes is None:
+        fig, axes = plt.subplots(n_rois, 1, figsize=(5, 0.5 * n_rois), sharex=True)
+        if n_rois == 1:
+            axes = [axes]
+    else:
+        fig = axes[0].figure
+        assert len(axes) == n_rois, "Number of provided axes must match number of ROIs"
+
+    # get palette
+
+    for i, ax in enumerate(axes):
+        ax.plot(time, time_series[i, 0], color=palette[0], lw=1, 
+                )
+        ax.plot(time, time_series[i, 1], color=palette[1], lw=1, 
+               )
+
+
+
+        sns.despine(ax=ax)
+
+        ax.set_xlabel("Time [s]")
+
+
+
+    # Figure-level legend above all traces
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, frameon=False, loc='upper center',
+               ncol=2, bbox_to_anchor=(0.5, 1.05))
+
+    return fig, axes

@@ -272,7 +272,7 @@ def plot_predicted_vs_true_scalar_value(
             "order":1,
         },
         color_map=color_map,
-        show_legend=False,
+        show_legend=True,
         ax=ax
     )
 
@@ -502,11 +502,13 @@ def fetch_and_plot_snippets_subplots(
         fig = plt.gcf()
         if not isinstance(axes, np.ndarray):
             axes = np.array(axes)
+
+    
     
     # Plot first set of snippets
     for i, snippet in enumerate(snippets_list1):
         axes[0].plot(times, snippet, color=plt.cm.tab10(i), linestyle=linestyles[i], linewidth=linewidths[i],label=stim_types[i])
-    axes[0].text(0.02, 0.98, "Data", 
+    axes[0].text(0.02, 0.98, f"Data\nG {own_celltype}", 
                  transform=axes[0].transAxes,
                  verticalalignment='top',
                  horizontalalignment='left')
@@ -522,6 +524,9 @@ def fetch_and_plot_snippets_subplots(
     if optimization_window is not None:
         for ax in axes:
             ax.axvspan(optimization_window[0], optimization_window[1], color='blue', alpha=0.1)
+    
+    
+    
     # Set labels and remove spines
     axes[0].set_ylabel("Spike probability [a.u]")
     axes[1].set_ylabel("Spike probability [a.u]")
@@ -766,6 +771,7 @@ def wrapper_fetch_complete_field_df(
         StimulusPresentationInfo,
         OnlineInferredRFPosition,
         Presentation,
+        cols_to_drop = ["mei","temporal_kernels","spatial_kernels"]
 ) -> Tuple[pd.DataFrame,List[int]]:
     
 
@@ -840,11 +846,6 @@ def wrapper_fetch_complete_field_df(
     mei_container=mei_container,
     )
 
-
-
-
-    # print columns
-    print(model_true_df.columns)
 
     model_true_df = add_predicted_response_column(model_true_df)
 
@@ -925,6 +926,5 @@ def wrapper_fetch_complete_field_df(
 
 
     # take out some columns to save memory
-    cols_to_drop = ["mei","temporal_kernels","spatial_kernels"]
     model_true_df = model_true_df.drop(columns=cols_to_drop)
     return model_true_df,roi_ids
