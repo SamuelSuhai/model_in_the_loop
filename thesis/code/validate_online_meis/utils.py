@@ -2,8 +2,105 @@ import pickle
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import torch
+import thesis.code.plot.style as styler
 
 from typing import List, Dict, Any
+
+from model_in_the_loop.utils.model_training import (get_predictions_targets_one_dataloader,
+                                                    load_pretrained_ensemble_model,
+                                                    train_or_refine_member_or_ensemble,
+                                                    get_dataloaders_and_data_info,
+                                                    load_stimuli,
+                                                    )
+
+from model_in_the_loop.utils.stimulus_optimization import (reconstruct_mei_from_decomposed,center_member_or_ensemble_readouts,
+                                                           generate_opt_stim_for_neuron_list,
+                                                            decompose_mei, get_model_mei_response
+                                                           )
+
+
+from openretina.data_io.hoefling_2024.responses import make_final_responses,filter_responses
+
+
+# initialize mei data containter
+
+def get_mei_container(model,
+                      session_id,
+                      cfg,
+                      ):
+
+    n_neurons = model.members[0].data_info['n_neurons_dict'][session_id]
+    print(n_neurons)
+
+    # set variables needed for container code
+    seeds = [111,222]
+    idx2stability = {i:"stable" for i in range(n_neurons)}
+    roi_ids = model.members[0].data_info["sessions_kwargs"][session_id]["roi_ids"]
+    readout_idx_wmei2rois = {i:r for i,r in zip(range(n_neurons),roi_ids)}
+
+
+    mei_data_container_entries = []
+    _ = center_member_or_ensemble_readouts(model, session_id)
+
+    ## generate meis
+    phase = "stable"
+    print(f"Generating {phase} MEIs for neurons (readout idx): {[idx for idx,stab in idx2stability.items() if stab ==phase ]}.")
+    set_model_to_eval_mode = True if phase == 'stable' else False
+    neuron_ids_to_analyze = [neuron_id for neuron_id, stability in idx2stability.items() if stability == phase]
+    seeds = seeds if phase == 'unstable' else [seeds[0]] # only one seed for stable meis
+    neuron_seed_mei_dict =  generate_opt_stim_for_neuron_list(
+                                    model = model,
+                                    new_session_id = session_id,
+                                    opt_stim_generation_params= cfg.stimulus_optimization,
+                                    random_seeds = seeds,
+                                    seed_it_func= torch.manual_seed,
+                                    neuron_ids_to_analyze = neuron_ids_to_analyze, # NOTE: this will optimize each id individually 
+                                    set_model_to_eval_mode = set_model_to_eval_mode, # model in training mode for noisy MEIs
+                                    )
+
+    print(f"Start decomposing ...")    
+    ## decompose meis
+    device =  model.members[0].device
+    for neuron_id,seed_dict in neuron_seed_mei_dict.items():
+        print(f"Decomposing MEIs for neuron (readout idx) {neuron_id} ...")
+        for seed,mei in seed_dict.items():
+
+            # decompose the MEIs
+            temporal_kernels, spatial_kernels, _ = decompose_mei(stimulus = mei.detach().cpu().numpy())
+        
+
+            if cfg.stimulus_optimization["reconstruct_mei"]:
+                reconstruction = reconstruct_mei_from_decomposed(
+                            temporal_kernels=temporal_kernels,
+                            spatial_kernels=spatial_kernels,
+                            turn_to_tensor=True)
+
+                assert reconstruction.shape == mei.shape, "Reconstructed MEI shape does not match original MEI shape."
+                
+                # make reonstruction same norm as mei
+                print(f"changing norm of reconstruction {torch.norm(reconstruction)} to match original mei norm {torch.norm(mei)}")
+                reconstruction = reconstruction / torch.norm(reconstruction) * torch.norm(mei)
+                print(f"new reconstruction norm {torch.norm(reconstruction)}")
+                mei = reconstruction # use the reconstructed MEI for further analysis
+                print(f"Done reconstructing MEI for neuron (readout idx) {neuron_id}, seed {seed}.")
+            
+            # add entry to data container 
+            mei_data_container_entries.append({
+                "readout_idx": neuron_id,
+                "roi_id": readout_idx_wmei2rois[neuron_id],
+                "mei_id": f"roi_{readout_idx_wmei2rois[neuron_id]}_seed_{seed}",
+                "seed": seed,
+                "mei": mei.detach(),
+                "temporal_kernels": temporal_kernels,
+                "spatial_kernels": spatial_kernels,
+                "stability": phase,
+            })
+
+
+    # make df container from all meis
+    mei_data_container = pd.DataFrame(mei_data_container_entries)
+    return mei_data_container
 
 
 def load_file_from_pickle(file_path):
@@ -11,6 +108,28 @@ def load_file_from_pickle(file_path):
         obj = pickle.load(f)
     return obj
 
+def load_torch_file(file_path):
+    try:
+        # First try loading with pickle
+        with open(file_path, 'rb') as f:
+            obj = pickle.load(f)
+        return obj
+    except:
+        try:
+            # If pickle fails, try torch.load with CPU mapping
+            obj = torch.load(file_path, map_location='cpu', weights_only=False)
+            return obj
+        except Exception as e:
+            print(f"Error loading file: {e}")
+            print("Trying alternative loading method...")
+            # Try loading with torch.load and strict=False
+            obj = torch.load(
+                file_path,
+                map_location='cpu',
+                weights_only=False,
+                pickle_module=pickle
+            )
+            return obj
 
 
 def plot_single_trf_temp_kernel_comparison(trf: np.ndarray,
@@ -258,6 +377,36 @@ def prepare_trf_kernel_data_for_plotting(
 
 
 
+def add_online_offline_comparison_legend(ax: np.ndarray[plt.Axes] | plt.Axes,also_comparison: bool=True):
+    """
+    Adds 2 (or 3) proxy artists above axis in center for online offline comparison legend.
+    """
+    palette = styler.get_palette('online_offline')
+    online,offline = palette['online'],palette['offline']
+    comparison = "purple"
+
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor=offline, label='Offline'),
+        Patch(facecolor=online, label='Online'),
+        ]
+    if also_comparison:
+        legend_elements.append(
+            Patch(facecolor=comparison, label='Difference')
+        )
+    if isinstance(ax, np.ndarray):
+        _ax = ax.flatten()[0]
+    else:
+        _ax = ax
+
+    _ax.legend(handles=legend_elements,
+              loc='upper center',
+              bbox_to_anchor=(1.1, 1.55),
+              ncol=len(legend_elements),
+              frameon=False
+              )
+    return ax
+    
 
 
 

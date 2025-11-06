@@ -570,7 +570,8 @@ def plot_confusion_matrix(matrix,
     
     # Plot the matrix
     sns.heatmap(matrix, annot=True, fmt=fmt, cmap=cmap, 
-                ax=ax, cbar_kws={'label': label, **cbar_kws},**heatmap_kws)
+                ax=ax, 
+                cbar_kws={'label': label, **cbar_kws},**heatmap_kws)
     
     # Update labels
     ax.set_xlabel('Online Cell Type')
@@ -792,6 +793,16 @@ def plot_ballpark_quality_contingency(quality_pivot,
     counts_crosstab = pd.crosstab(df['n1_tercile'],df['cl_tercile'],rownames=['Offline Quality'],colnames=['Online Quality'])
     prob_crosstab = counts_crosstab.div(counts_crosstab.sum(axis=1), axis=0)
     
+    # Get the range values for each tercile
+    cl_ranges = pd.qcut(quality_pivot['cl'], q=[0,1/3,2/3,1]).value_counts().sort_index()
+    n1_ranges = pd.qcut(quality_pivot['n1'], q=[0,1/3,2/3,1]).value_counts().sort_index()
+    
+    # Create new labels with ranges
+    cl_labels = [f"{label}\n({interval.left:.2f} - {interval.right:.2f})" 
+                for label, interval in zip(["lower", "middle", "upper"], cl_ranges.index)]
+    n1_labels = [f"{label}\n({interval.left:.2f} - {interval.right:.2f})" 
+                for label, interval in zip(["lower", "middle", "upper"], n1_ranges.index)]
+
     fig,ax = plt.subplots(1,1, **subplot_kws)
     heatmap = sns.heatmap(counts_crosstab, ax =ax,
                 annot=True, 
@@ -801,6 +812,11 @@ def plot_ballpark_quality_contingency(quality_pivot,
                 **heatmap_kws)
     cbar = heatmap.collections[0].colorbar
     cbar.set_ticks([])
+
+    # Set the new labels
+    ax.set_xticklabels(cl_labels)
+    ax.set_yticklabels(n1_labels, rotation=0)
+    
     ax.set_xlabel('Online quality tercile')
     ax.set_ylabel('Offline quality tercile')
     ax.set_title(f'Total: {len(df)} recording fields')
@@ -808,12 +824,18 @@ def plot_ballpark_quality_contingency(quality_pivot,
     
     return fig,ax
 
-def plot_quality_scatter(quality_pivot,subplot_kws = {}, scatter_kws = {}):
+def plot_quality_scatter(quality_pivot,
+                         subplot_kws = {}, 
+                         scatter_kws = {},
+                         summary_stats = True,)-> Tuple[plt.Figure, plt.Axes]:
  
     fig,ax = plt.subplots(**subplot_kws)
     xs = quality_pivot['cl']
     ys = quality_pivot['n1']
 
+    if summary_stats:
+        print(f"Correlation between online and offline quality: {xs.corr(ys):.3f}")
+        
     
     scatter = ax.scatter(xs, ys, alpha=0.7,  **scatter_kws)  
 

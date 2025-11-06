@@ -660,32 +660,41 @@ def fetch_all_fields_with_stm(stim_name):
 
 def average_df_over_colvalues(
         df: pd.DataFrame,
-        cols_to_keep: List[str],
+        cols_to_gb: List[str],
         cols_to_average: List[str],
+        verbose = True,
     ) -> pd.DataFrame:
     """
-    For each unique combination of values in cols_to_keep, average the values in cols_to_average"""
+    For each unique combination of values in cols_to_gb, average the values in cols_to_average"""
 
     # groupby all columns except cols_to_average_over and cols_to_average
     
-    print(f"Grouping by columns: {cols_to_keep}, reducing df cols over {set(df.columns) - set(cols_to_keep)}")
-    for c in cols_to_keep:
+    print(f"Grouping by columns: {cols_to_gb}, reducing df cols over {set(df.columns) - set(cols_to_gb)}")
+    for c in cols_to_gb:
         assert not isinstance(df[c].iloc[0], np.ndarray), f"Column {c} is not suitable for grouping, contains ndarray."
 
-    grouped_df = df.groupby(cols_to_keep,as_index=False)
+    grouped_df = df.groupby(cols_to_gb,as_index=False)
+    
+    if verbose:
+        print(f"Number of unique groups: {len(grouped_df)}")
+    
     agg_func = lambda x: np.mean(np.stack(x.to_list()),axis=0)
 
     average_df = grouped_df[cols_to_average].agg(
         func = agg_func
     )
+
+    if verbose:
+        print(f"Averaged df over columns: {cols_to_average}, resulting df has {len(average_df)} rows. Differece in rows: {len(df) - len(average_df)}")
     return average_df
+
+
 
 def get_mean_snippet_df(field_key,
                         roi_id,
                         bsl_correction_method = "first",
                         stim_name ='circle',
                         cond2_value=None,
-                        keep_and_agg_more_cols = [],
                         drop_first_presentation=True,
                         verbose=True):
     rois_snippets_df = fetch_rois_snippets_df(field_key,
@@ -1055,7 +1064,10 @@ def wrapper_plot_one_roi_ordered_snippets(
 
 
     # fetch and process df
-    mean_df,snippet_col_name = get_mean_snippet_df(field_key,roi_id,bsl_correction_method=bsl_correction_method,cond2_value=cond2_value)
+    mean_df,snippet_col_name = get_mean_snippet_df(field_key,
+                                                   roi_id,
+                                                   bsl_correction_method=bsl_correction_method,
+                                                   cond2_value=cond2_value)
 
 
     snippet_trace_list,single_snippet_dt ,\
@@ -1072,14 +1084,15 @@ def wrapper_plot_one_roi_ordered_snippets(
     pu.plot_ordered_snippets(snippet_trace_list = snippet_trace_list,
                              highlight_bg_times = highlight_bg_times,
                              highlight_bg_patch_kwargs = {"alpha":0.3},
-                             highlight_stim_times = highlighted_stim_times,
-                                highlight_stim_patch_kwargs = {"alpha":0.3},
-                                snippet_vline = snippet_vline,
-                          single_snippet_dt = single_snippet_dt,
-                          time_buffer_between_snippets = time_buffer_between_snippets,
-                          x_tick_lables = x_tick_lables,
-                          plot_kwargs = plot_kwargs,show_legend =show_legend,ax = ax)
-    
+                            highlight_stim_times = highlighted_stim_times,
+                            highlight_stim_patch_kwargs = {"alpha":0.3},
+                            snippet_vline = snippet_vline,
+                            single_snippet_dt = single_snippet_dt,
+                            time_buffer_between_snippets = time_buffer_between_snippets,
+                            x_tick_lables = x_tick_lables,
+                            x_ticks_kwargs = {"rotation":45},
+                            plot_kwargs = plot_kwargs,show_legend =show_legend,ax = ax)
+        
 def wrapper_plot_one_roi_successive_snippets(
             field_key,
             roi_id,

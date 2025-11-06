@@ -166,8 +166,11 @@ class DiverselyIncreaseObjective(AbstractObjective):
         non_diag_dists = pw_dists[non_diag_mask]
         min_pw_dist = torch.min(non_diag_dists)
 
-        total_score = increase_part - self.d_weight * min_pw_dist 
-
+        toal_loss = increase_part - self.d_weight * min_pw_dist 
+        
+        
+        # NOTE: open-retina uses objectives not losses!! need to flip sign
+        total_score = - toal_loss
         return total_score
 
 
@@ -234,7 +237,8 @@ def generate_deis(model: BaseCoreReadout | EnsembleModel,
                   n_deis: int,
                   neuron_id: int,
                   session_id: str,
-                  opt_stim_generation_params: Dict[str,Any]) -> torch.Tensor:
+                  opt_stim_generation_params: Dict[str,Any],
+                  mask_threshold: float = 2.5) -> torch.Tensor:
     """
     Generates deis
     """
@@ -245,8 +249,8 @@ def generate_deis(model: BaseCoreReadout | EnsembleModel,
         detached_stimulus = detached_stimulus.squeeze(0) # shape (C.T,H,W)
     c,t,h,w = detached_stimulus.shape
     # get rf mask: first spatial H,W then temporal then combine
-    rf_mask_space = torch.any(torch.abs(detached_stimulus - torch.mean(detached_stimulus)) > 1.5 * torch.std(detached_stimulus), dim=(0,1)) # shape (H,W)
-    rf_mask_time = torch.any(torch.abs(detached_stimulus - torch.mean(detached_stimulus)) > 1.5 * torch.std(detached_stimulus), dim=(0,2,3)) # shape (T,)
+    rf_mask_space = torch.any(torch.abs(detached_stimulus - torch.mean(detached_stimulus)) > mask_threshold * torch.std(detached_stimulus), dim=(0,1)) # shape (H,W)
+    rf_mask_time = torch.any(torch.abs(detached_stimulus - torch.mean(detached_stimulus)) > mask_threshold * torch.std(detached_stimulus), dim=(0,2,3)) # shape (T,)
     rf_mask_thw = rf_mask_time[:,None,None] * rf_mask_space[None,:,:] # shape (T,H,W)
     rf_mask = rf_mask_thw[None].repeat(c, 1, 1, 1).unsqueeze(0) # shape (1,C,T,H,W)
     rf_mask = rf_mask.to(DEVICE)

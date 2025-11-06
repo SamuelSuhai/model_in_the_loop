@@ -43,7 +43,7 @@ class STAWrapper(DJComputeWrapper):
         Compute the STA analysis.
         """
         complete_restriction = get_rois_in_field_restriction_str(field_key, roi_id_subset)
-        
+        print(complete_restriction)
         if progress_callback is not None:
             progress_callback(0)
         
