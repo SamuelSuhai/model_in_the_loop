@@ -508,7 +508,7 @@ def fetch_and_plot_snippets_subplots(
     # Plot first set of snippets
     for i, snippet in enumerate(snippets_list1):
         axes[0].plot(times, snippet, color=plt.cm.tab10(i), linestyle=linestyles[i], linewidth=linewidths[i],label=stim_types[i])
-    axes[0].text(0.02, 0.98, f"Data\nG {own_celltype}", 
+    axes[0].text(0.02, 0.98, f"Data\nRGC # {true_online_roi_id}\nG {own_celltype}", 
                  transform=axes[0].transAxes,
                  verticalalignment='top',
                  horizontalalignment='left')

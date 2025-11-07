@@ -729,7 +729,7 @@ def get_mean_snippet_df(field_key,
                        "distance"]
     n_row_before = len(rois_snippets_df)
     average_df = average_df_over_colvalues(rois_snippets_df,
-                                           cols_to_keep=cols_iding_rows,
+                                           cols_to_gb=cols_iding_rows,
                                            cols_to_average=[snippet_col_name])
     assert len(average_df) == n_row_before / rois_snippets_df["cond2"].nunique(), f"Unexpected number of rows after averaging.\n Before: {n_row_before}, after: {len(average_df)}, expected: {n_row_before / rois_snippets_df["cond2"].nunique()}"
 
@@ -896,13 +896,6 @@ def fetch_and_format_data_for_snippet_analysis(
 
 
 
-
-
-
-
-
-
-
 def wrapper_scatter_response_distance_celltype(
         field_key: Dict[str,Any] | List[Dict[str,Any]],
         roi_id_list: List[int] | List[List[int]],
@@ -952,12 +945,17 @@ def wrapper_scatter_response_distance_celltype(
     else:
         palette = sns.color_palette("tab10", n_colors=len(celltypes))
         color_map = {celltype: palette[i] for i,celltype in enumerate(celltypes)}
+
+
+    # add a new column G<celltype> and adjust the color map
+    full_df["celltype_label"] = full_df["celltype"].apply(lambda x: f"G {x}")
+    color_map = {f"G {celltype}": color for celltype, color in color_map.items()}
     
     ax = pu.plot_mulit_group_scatter_fits(full_df=full_df,
                                        x = "distance",
                                         y=measure,
                                         ax=ax,
-                                        hue="celltype",
+                                        hue="celltype_label",
                                         xlabel="Distance to RF center [μm]",
                                         color_map=color_map,
                                         ylabel=ylabel,

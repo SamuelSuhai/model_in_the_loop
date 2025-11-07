@@ -27,18 +27,23 @@ def make_plot_df(df, only_order_n=None):
 def plot_points_and_ci(df,column,
                        ax,
                        dodge=0.3,
-                       colors = sns.color_palette("tab10")):
+                       colors = sns.color_palette("tab10"),
+                       xtick_angle: float =0.0,):
 
     
     colvals = df[column].unique()
 
     offsets = np.linspace(-dodge/2, dodge/2, len(colvals))
+    x_ticks = []
     for i,level in enumerate(colvals):
         sub = df[df[column] == level]
         x = i + offsets[i]
         ax.errorbar([x], sub["mid"], yerr=[sub["err_low"], sub["err_high"]],
                     fmt="o", color=colors[i % len(colors)], 
                     capsize=3, )
+        x_ticks.append(x)
+    ax.set_xticks(x_ticks)
+    ax.set_xticklabels(colvals, rotation=xtick_angle)
     ax.axhline(0, color='grey', linestyle='--', linewidth=0.3)
     sns.despine(ax=ax)
     return ax
