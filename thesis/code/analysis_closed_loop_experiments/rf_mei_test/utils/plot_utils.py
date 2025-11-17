@@ -590,7 +590,7 @@ def plot_2d_array_comparison(
     """
     assert len(array1) == len(array2), "Lists must have the same length"
     n_pairs = len(array1)
-    assert axes.shape == (n_pairs,)
+    assert axes.shape == (n_pairs,), f"Axes array must have shape ({n_pairs},) but got {axes.shape}"
 
 
 
