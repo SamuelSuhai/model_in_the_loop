@@ -18,6 +18,7 @@ model_configs:
 
   # overwrite load_model_path
   paths:
+    # absolute path to where the model is stored. Use the full ensemble model in the repo if you want. 
     load_model_path: /gpfs01/euler/User/ssuhai/GitRepos/simulation_closed_loop/model_in_the_loop/models/full_ensemble
 
 
@@ -40,7 +41,7 @@ paths:
   stimulus_output_dir: /gpfs01/euler/data/Data/Suhai/stimuli_closed_loop
   dummy_ini_dir: model_in_the_loop/data/dummy_ini/
 
-  # cache dir 
+  # cache dir where openretina can store its cache
   set_cache_dir_openretina: /gpfs01/euler/User/ssuhai/openretina_cache
 
 

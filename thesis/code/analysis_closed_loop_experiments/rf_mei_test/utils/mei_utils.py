@@ -243,6 +243,7 @@ def plot_predicted_vs_true_scalar_value(
     xlabel: str = "Predicted mean spike probability [a.u.]",
     ylabel: str = "True mean spike probability [a.u.]",
     ax: plt.Axes | None = None,
+    color_map = None,
     ):
     
     if ax is None:
@@ -255,8 +256,9 @@ def plot_predicted_vs_true_scalar_value(
     df["true_online_roi_id"] = df["true_online_roi_id"].astype(int)
 
 
-    color_palette = sns.color_palette("tab10", n_colors=df["true_online_roi_id"].nunique())
-    color_map = {roi_id: color_palette[i] for i, roi_id in enumerate(sorted(df["true_online_roi_id"].unique()))}
+    if color_map is None:
+        color_palette = sns.color_palette("tab10", n_colors=df["true_online_roi_id"].nunique())
+        color_map = {roi_id: color_palette[i] for i, roi_id in enumerate(sorted(df["true_online_roi_id"].unique()))}
 
     ax = pu.plot_mulit_group_scatter_fits(
         full_df=df,

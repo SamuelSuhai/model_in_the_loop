@@ -1,5 +1,7 @@
 
-
+"""
+Note: code is partially adatped from open-retina.
+"""
 
 from typing import Dict,Any,Protocol, List,Tuple,Callable
 import torch
@@ -102,6 +104,7 @@ class DecreaseObjective(AbstractObjective):
 
 class DiverselyIncreaseObjective(AbstractObjective):
     """
+    NOTE: THIS CLASS NEEDS TO BE VALIDATED AGAIN SINCE I DID NOT TEST IT SINCE I FIXED A CRITICAL BUG.
     Implements the diverse exciting stimuli objectife funciton by Ding 2025. 
 
     It takes: 

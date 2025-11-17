@@ -49,6 +49,61 @@ def plot_points_and_ci(df,column,
     return ax
 
 
+def generate_hierarchical_colors(supergroup_sizes):
+    """
+    AI: Generate hierarchical colors for a list of supergroup sizes.
+    
+    Parameters
+    ----------
+    supergroup_sizes : list[int]
+        Number of subgroups (or cells) inside each supergroup.
+        
+    Returns
+    -------
+    colors : list[list]
+        colors[i][j] is the color for subgroup j of supergroup i.
+    base_colors : list
+        One representative color per supergroup (useful for regression lines).
+    """
+
+    # A set of visually distinct sequential colormaps
+    available_cmaps = [
+        plt.cm.Reds, # off 
+        plt.cm.Greens,
+        plt.cm.GnBu,
+        plt.cm.Blues,
+        plt.cm.Greys,
+        plt.cm.Purples,
+        plt.cm.Oranges,
+        plt.cm.PuBu,
+        plt.cm.YlOrBr,
+        plt.cm.PuRd,
+    ]
+    
+    # Pick as many as needed, cycling if supergroups > number of available maps
+    base_cmaps = [
+        available_cmaps[i % len(available_cmaps)]
+        for i in range(len(supergroup_sizes))
+    ]
+    
+    all_colors = []
+    base_colors = []
+
+    for sg_idx, n_subgroups in enumerate(supergroup_sizes):
+        cmap = base_cmaps[sg_idx]
+
+        # avoid extremes → keep shades
+        shades = np.linspace(0.2, 1, n_subgroups)[::-1]
+
+        subgroup_colors = [cmap(s) for s in shades]
+        all_colors.extend(subgroup_colors)
+
+        # representative color for the whole supergroup (e.g., mid shade)
+        base_colors.append(cmap(0.6))
+
+    return all_colors, base_colors
+
+
 
 
 
@@ -62,11 +117,13 @@ def plot_conf_intervals(df, ax=None, cmap_by = "celltype", legend_str=None, dodg
     if len(levels) == 1:
         dodge = 0
     
-    
+    # sort by celltype 
+    df = df.sort_values(by="celltype")
+
     if cmap_by == "celltype":
         # Create direct mapping of celltypes to colors
-        palette = sns.color_palette("tab10", n_colors=len(celltypes))
-        colors = palette  # Use palette directly
+        # NOTE sorry hard coded no time
+        colors, _ = generate_hierarchical_colors([4,0,0,3,1,3])
     elif cmap_by == "poly_power":
         if len(levels) == 1:
             colors = ["black"]
@@ -95,7 +152,7 @@ def plot_conf_intervals(df, ax=None, cmap_by = "celltype", legend_str=None, dodg
 
     ax.set_xticks(range(len(celltypes)))
     ax.set_xticklabels(celltypes)
-    ax.set_xlabel("Celltype")
+    ax.set_xlabel("Cell type")
     ax.set_ylabel("Estimate (± 95% CI)")
     sns.despine(ax=ax)
     if len(levels) > 1:
