@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="900" height="560" viewBox="0 0 900 560">
+
+  <rect x="0" y="0" width="900" height="560" fill="white"/>
+
+  <text x="450" y="40"
+        font-family="Arial, Helvetica, sans-serif"
+        font-size="26" text-anchor="middle">
+    Data analysis routines
+  </text>
+
+  <rect x="60" y="70" width="780" height="440"
+        rx="16" ry="16"
+        fill="none"
+        stroke="black" stroke-width="2.5"/>
+
+  <line x1="450" y1="70" x2="450" y2="510"
+        stroke="black" stroke-width="1.5"
+        stroke-opacity="0.45"/>
+
+  <rect x="60" y="70" width="390" height="440"
+        fill="#000000" fill-opacity="0.05"/>
+
+  <text x="255" y="140"
+        font-family="Arial, Helvetica, sans-serif"
+        font-size="22" text-anchor="middle">
+    Online data analysis pipelines
+  </text>
+
+  <rect x="450" y="70" width="390" height="440"
+        fill="#000000" fill-opacity="0.05"/>
+
+  <text x="645" y="140"
+        font-family="Arial, Helvetica, sans-serif"
+        font-size="22" text-anchor="middle">
+    Offline data analysis pipelines
+  </text>
+
+</svg>
