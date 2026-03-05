@@ -729,7 +729,7 @@ def get_mean_snippet_df(field_key,
                        "distance"]
     n_row_before = len(rois_snippets_df)
     average_df = average_df_over_colvalues(rois_snippets_df,
-                                           cols_to_keep=cols_iding_rows,
+                                           cols_to_gb=cols_iding_rows,
                                            cols_to_average=[snippet_col_name])
     assert len(average_df) == n_row_before / rois_snippets_df["cond2"].nunique(), f"Unexpected number of rows after averaging.\n Before: {n_row_before}, after: {len(average_df)}, expected: {n_row_before / rois_snippets_df["cond2"].nunique()}"
 
@@ -896,13 +896,6 @@ def fetch_and_format_data_for_snippet_analysis(
 
 
 
-
-
-
-
-
-
-
 def wrapper_scatter_response_distance_celltype(
         field_key: Dict[str,Any] | List[Dict[str,Any]],
         roi_id_list: List[int] | List[List[int]],
@@ -915,18 +908,20 @@ def wrapper_scatter_response_distance_celltype(
         drop_first_presentation = True,
         ax = None,
         cond2_value = None,
+        full_df: pd.DataFrame | None = None,
         ):
     
-
-    full_df = fetch_and_format_data_for_snippet_analysis(field_key,
-                                                         roi_id_list,
-                                                         bsl_correction_method=bsl_correction_method,
-                                                            polarity=polarity,
-                                                            stimulus_type=stimulus_type,
-                                                            measure=measure,
-                                                            drop_first_presentation=drop_first_presentation,
-                                                            cond2_value=cond2_value,
-                                                         )
+    if full_df is None:
+        full_df = fetch_and_format_data_for_snippet_analysis(field_key,
+                                                            roi_id_list,
+                                                            bsl_correction_method=bsl_correction_method,
+                                                                polarity=polarity,
+                                                                stimulus_type=stimulus_type,
+                                                                measure=measure,
+                                                                drop_first_presentation=drop_first_presentation,
+                                                                cond2_value=cond2_value,
+                                                            )
+    
     
 
 
@@ -945,19 +940,43 @@ def wrapper_scatter_response_distance_celltype(
     else:
         ylabel = measure
 
+    # sort by celltype 
+    full_df = full_df.sort_values("celltype",ascending=True)
+
+    CELLTYPE_GROUP_RANGES = (
+        (1,9),
+        (10,14),
+        (15,20),
+        (21,27),
+        (28,28), # sperate sbc
+        (29,32),
+        (33,100), # AC
+    )
     celltypes = list(map(int,np.unique(full_df["celltype"])))
 
     if plot_kwargs.get("use_celltype_cmap",False) is True:
         color_map = pu.get_celltype_alpha_cmap(celltypes=celltypes)
     else:
-        palette = sns.color_palette("tab10", n_colors=len(celltypes))
-        color_map = {celltype: palette[i] for i,celltype in enumerate(celltypes)}
+
+        print(celltypes)
+        # sorry for hadcoding this...
+        all_colors, base_colors = pu.generate_hierarchical_colors([4,0,0,3,1,3])
+        print(f"Using color map: {all_colors}")
+        print(len(all_colors))
+        print(len(celltypes))
+        color_map = {celltype: all_colors[i] for i,celltype in enumerate(celltypes)}
+
+    # add a new column G<celltype> and adjust the color map
+    full_df["celltype_label"] = full_df["celltype"].apply(lambda x: f"G {x}")
+    color_map = {f"G {celltype}": color for celltype, color in color_map.items()}
     
+
+
     ax = pu.plot_mulit_group_scatter_fits(full_df=full_df,
                                        x = "distance",
                                         y=measure,
                                         ax=ax,
-                                        hue="celltype",
+                                        hue="celltype_label",
                                         xlabel="Distance to RF center [μm]",
                                         color_map=color_map,
                                         ylabel=ylabel,
@@ -969,7 +988,7 @@ def wrapper_scatter_response_distance_celltype(
     import matplotlib.lines as mlines
 
     # add thin line proxy artist for legend
-    proxy_single_reg= mlines.Line2D([], [], color='grey', linestyle='-', linewidth=0.3, label="celltype fit")
+    proxy_single_reg= mlines.Line2D([], [], color='grey', linestyle='-', linewidth=0.3, label="cell type fit")
     handles, labels = ax.get_legend_handles_labels()
     
     # combine existing handles with new proxy artist
@@ -977,8 +996,11 @@ def wrapper_scatter_response_distance_celltype(
     labels.append(proxy_single_reg.get_label())
     
     # recreate legend with all handles
-    ax.legend(handles=handles,labels=labels,ncols=2)
+    ax.legend(handles=handles,labels=labels,ncols=3)
 
+    # shape for reporting nr of cells
+    print(f"Number of cells per celltype:\n{full_df.groupby('celltype')['roi_id'].nunique()}")
+    print(f"Df shape: {full_df.shape=}")
 
     return ax
 

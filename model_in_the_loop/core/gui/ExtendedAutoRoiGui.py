@@ -1,3 +1,7 @@
+"""
+NOTE: a lot of this code is taken and modified from djimaging's InteractiveRoiCanvas.
+"""
+
 import os.path
 import pickle
 import warnings
@@ -402,6 +406,10 @@ class RoiCanvasData:
 
 
 class ExtendedAutoRoiGui(RoiCanvasData):
+
+    """
+    Modified version of djimagings InteractiveRoiCanvas.
+    """
 
     def __init__(
             self,
