@@ -170,7 +170,7 @@ def load_mei_dict(
     StimulusPresentationInfo,
     restriction: str | dict = {},
 ):  
-    
+    import io
     metadata_files = (StimulusPresentationInfo() & restriction).fetch("metadata_file", as_dict=True)
     
     # assert all metadata files are the same
@@ -187,8 +187,16 @@ def load_mei_dict(
     full_mei_dir = os.path.join(parent_dir, mei_dir)
     mei_dict_file = os.path.join(full_mei_dir, MEI_CONTAINER_BASENAME)
     
+    # Create a custom unpickler that maps all tensors to CPU
+    class CPU_Unpickler(pickle.Unpickler):
+        def find_class(self, module, name):
+            if module == 'torch.storage' and name == '_load_from_bytes':
+                return lambda b: torch.load(io.BytesIO(b), map_location='cpu', weights_only=False)
+            else:
+                return super().find_class(module, name)
+    
     with open(mei_dict_file, "rb") as f:
-        mei_dict = pickle.load(f)
+        mei_dict = CPU_Unpickler(f).load()
 
     return mei_dict
 
@@ -510,7 +518,7 @@ def fetch_and_plot_snippets_subplots(
     # Plot first set of snippets
     for i, snippet in enumerate(snippets_list1):
         axes[0].plot(times, snippet, color=plt.cm.tab10(i), linestyle=linestyles[i], linewidth=linewidths[i],label=stim_types[i])
-    axes[0].text(0.02, 0.98, f"Data\nRGC # {true_online_roi_id}\nG {own_celltype}", 
+    axes[0].text(0.02, 0.98, f"Data\nRGC # {int(true_online_roi_id)}\nG {own_celltype}", 
                  transform=axes[0].transAxes,
                  verticalalignment='top',
                  horizontalalignment='left')
@@ -518,7 +526,7 @@ def fetch_and_plot_snippets_subplots(
     # Plot second set of snippets
     for i, snippet in enumerate(snippets_list2):
         axes[1].plot(times, snippet, color=plt.cm.tab10(i),linestyle=linestyles[i], linewidth=linewidths[i],label=stim_types[i])
-    axes[1].text(0.02, 0.98, "Model",
+    axes[1].text(0.02, 0.98, f"Model\nRGC # {int(true_online_roi_id)}",
                  transform=axes[1].transAxes,
                  verticalalignment='top',
                  horizontalalignment='left')
